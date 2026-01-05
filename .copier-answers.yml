@@ -1,0 +1,15 @@
+# Changes here will be overwritten by Copier
+_commit: 34d23a0
+_src_path: https://github.com/monarch-initiative/monarch-project-copier
+copyright_year: '2026'
+email: nico@semanticly.ai
+full_name: Nicolas Matentzoglu
+gh_action_docs_preview: false
+github_handle: monarch-initiative
+github_org: monarch-initiative
+license: Apache-2.0
+project_description: AI-powered tools for Mondo disease ontology curation and quality
+    assurance.
+project_name: mondo-ai
+project_slug: mondo_ai
+
