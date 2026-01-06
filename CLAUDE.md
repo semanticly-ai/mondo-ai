@@ -42,7 +42,7 @@ NEVER required, if you think you need them, it's likely a bad smell that your lo
 ## Project Architecture
 
 ### Core Structure
-- **src/my_awesome_tool/** - Main package containing the CLI and application logic
+- **src/mondo_ai/** - Main package containing the CLI and application logic
   - `cli.py` - Typer-based CLI interface, entry point for the application
 - **tests/** - Test suite using pytest with parametrized tests
 - **docs/** - MkDocs-managed documentation with Material theme
@@ -67,4 +67,4 @@ NEVER required, if you think you need them, it's likely a bad smell that your lo
 1. Dependencies are managed via `uv` - use `uv add` for new dependencies
 2. All commands are run through `just` or `uv run`
 3. The project uses dynamic versioning from git tags
-4. Documentation is auto-deployed to GitHub Pages at https://monarch-initiative.github.io/my-awesome-tool
+4. Documentation is auto-deployed to GitHub Pages at https://monarch-initiative.github.io/mondo-ai
