@@ -1,0 +1,23 @@
+{
+  "version": "1.0",
+  "files": [
+    {
+      "filename": "packets_000.jsonl",
+      "status": "sealed",
+      "size_bytes": 52428871,
+      "packet_count": 43815,
+      "created": "2026-03-17T19:41:42.161746",
+      "sealed_at": "2026-03-17T20:21:18.226954"
+    },
+    {
+      "filename": "packets_001.jsonl",
+      "status": "sealed",
+      "size_bytes": 52429545,
+      "packet_count": 33864,
+      "created": "2026-03-17T20:21:18.227640",
+      "sealed_at": "2026-03-18T11:41:54.338791"
+    }
+  ],
+  "total_packets": 77679,
+  "total_size_bytes": 104858416
+}

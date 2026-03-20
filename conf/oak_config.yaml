@@ -1,0 +1,35 @@
+# OAK configuration for linkml-term-validator
+# This configures ontology sources for validating term references in evidence packets
+
+# Custom prefixes for this project (no validation needed)
+skip_prefixes:
+  - mondoai
+
+ontologies:
+  # Mondo Disease Ontology - primary ontology for disease terms
+  - prefix: MONDO
+    source: sqlite:obo:mondo
+
+  # OMIM - Online Mendelian Inheritance in Man
+  - prefix: OMIM
+    source: sqlite:obo:omim
+
+  # Orphanet Rare Disease Ontology
+  - prefix: Orphanet
+    source: sqlite:obo:ordo
+
+  # Disease Ontology
+  - prefix: DOID
+    source: sqlite:obo:doid
+
+  # Human Phenotype Ontology (for phenotype references)
+  - prefix: HP
+    source: sqlite:obo:hp
+
+  # OBO metadata vocabulary
+  - prefix: oboInOwl
+    source: sqlite:obo:oboInOwl
+
+  # Information Artifact Ontology (for definition annotations)
+  - prefix: IAO
+    source: sqlite:obo:iao

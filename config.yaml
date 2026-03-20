@@ -1,0 +1,102 @@
+# MondoAI Pipeline Configuration
+# ================================
+# This configuration file controls the MondoAI evidence sync pipeline.
+
+# Source resources to process
+# Each source has its own content_weights for fine-grained reliability control
+resources:
+  - id: omim
+    name: OMIM
+    # Note: OMIM requires an API key. Get one at https://omim.org/api
+    url: https://data.omim.org/downloads/YOUR_API_KEY/mimTitles.txt
+    enabled_content:
+      - synonyms
+      - labels
+    content_weights:
+      exact_synonym: 0.95    # OMIM exact synonyms are highly reliable
+      related_synonym: 0.85
+      broad_synonym: 0.75
+      narrow_synonym: 0.75
+      label: 0.95
+      definition: 0.90
+    enabled: true
+
+  - id: ordo
+    name: Orphanet Rare Disease Ontology
+    url: http://www.orphadata.org/data/ORDO/ordo_orphanet.owl
+    enabled_content:
+      - synonyms
+      - labels
+      - hierarchy
+    content_weights:
+      exact_synonym: 0.90
+      related_synonym: 0.80
+      broad_synonym: 0.70
+      narrow_synonym: 0.70
+      label: 0.90
+      definition: 0.85
+      parent: 0.85
+    enabled: true
+
+  - id: doid
+    name: Disease Ontology
+    url: http://purl.obolibrary.org/obo/doid.owl
+    enabled_content:
+      - synonyms
+      - labels
+      - hierarchy
+    content_weights:
+      exact_synonym: 0.85
+      related_synonym: 0.75
+      broad_synonym: 0.65
+      narrow_synonym: 0.65
+      label: 0.85
+      definition: 0.80
+      parent: 0.80
+    enabled: true
+
+# Mondo ontology configuration
+mondo:
+  owl_url: http://purl.obolibrary.org/obo/mondo.owl
+  sssom_url: http://purl.obolibrary.org/obo/mondo/mondo.sssom.tsv
+  cache_dir: data/cache
+
+# Evidence scoring configuration
+# NER (Net Evidence Ratio) ranges from -1 to +1
+# Evidence weights are defined per-source in content_weights above
+scoring:
+  # Thresholds for automated decisions
+  accept_threshold: 0.7      # Auto-accept if NER >= 0.7
+  reject_threshold: -0.3     # Auto-reject if NER <= -0.3
+  review_threshold_min: -0.3 # Human review if -0.3 < NER < 0.7
+  review_threshold_max: 0.7
+
+# PubMed enrichment settings
+enrichment:
+  enabled: false  # Set to true to enable PubMed lookups
+  min_score_for_enrichment: -0.5  # Enrich packets with NER below this
+  max_papers_per_packet: 5
+  cache_dir: data/references_cache
+  # ncbi_api_key: YOUR_NCBI_API_KEY  # Optional: for higher rate limits
+
+# AI agent synthesis settings
+agent:
+  enabled: true
+  provider: anthropic  # or: openai
+  model: claude-sonnet-4-20250514
+  prompt_version: v1
+  max_tokens: 1024
+  temperature: 0.0
+
+# Storage configuration
+storage:
+  backend: duckdb  # or: sqlite
+  db_path: packet_index/mondo_ai.duckdb
+  packet_dir: evidence_packets
+  runs_dir: runs
+
+# JSONL storage configuration (for hosting/distribution)
+jsonl_storage:
+  enabled: true
+  store_dir: packet_store
+  max_file_size_mb: 50  # Soft limit - files sealed at this size
