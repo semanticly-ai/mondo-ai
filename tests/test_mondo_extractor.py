@@ -1,9 +1,7 @@
 """Tests for the Mondo extractor module."""
 
-import pytest
 
 from mondo_ai.datamodel import (
-    Agent,
     AgentContribution,
     Coding,
     ContributionType,
@@ -14,7 +12,6 @@ from mondo_ai.datamodel import (
     TrustLevel,
 )
 from mondo_ai.extraction.mondo_extractor import (
-    AnnotationProvenance,
     MONDO_CONSORTIUM,
     create_candidate_literature_evidence_line,
     create_consortium_evidence_line,

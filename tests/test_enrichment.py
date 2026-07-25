@@ -1,8 +1,7 @@
 """Tests for the enrichment module."""
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
-import pytest
 
 from mondo_ai.datamodel import (
     ConcordanceItem,
@@ -18,7 +17,6 @@ from mondo_ai.datamodel import (
     predicate_to_coding,
 )
 from mondo_ai.enrichment.pubmed import (
-    PubMedClient,
     PubMedPaper,
     ReferenceCache,
     build_search_query,

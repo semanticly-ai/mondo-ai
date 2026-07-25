@@ -4,7 +4,6 @@ from mondo_ai.extraction.owl_extractor import (
     OWLExtractor,
     extract_synonyms_sample,
     extract_hierarchy_sample,
-    extract_provenance_from_sources,
 )
 from mondo_ai.extraction.mondo_extractor import (
     MondoExtractor,

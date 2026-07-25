@@ -1,22 +1,20 @@
 """Tests for evidence packet statistics generation."""
 
-import json
 from datetime import date
 from pathlib import Path
 
-import pytest
 
 from mondo_ai.datamodel import (
     ConcordanceItem,
     CurationStatus,
-    EvidenceDirection,
     EvidenceItemType,
     EvidencePacket,
+    InformationEntity,
     SieveEvidenceLine,
     SieveStatement,
 )
 from mondo_ai.datamodel.sieve_models import Coding
-from mondo_ai.stats import PacketStats, compute_stats
+from mondo_ai.stats import compute_stats
 
 
 def _make_packet(
@@ -38,7 +36,7 @@ def _make_packet(
     """Create a test packet with configurable properties."""
     evidence_lines = []
     for i in range(num_evidence_lines):
-        items = []
+        items: list[InformationEntity] = []
         for j in range(num_items_per_line):
             items.append(
                 ConcordanceItem(

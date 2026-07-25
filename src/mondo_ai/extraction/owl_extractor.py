@@ -19,7 +19,6 @@ import curies
 import pyoxigraph as px
 
 from mondo_ai.datamodel import (
-    EntityMapping,
     EntitySnapshot,
     ResourceSnapshot,
     Synonym,
@@ -195,6 +194,7 @@ class OWLExtractor:
                 variables = []
 
         result = self._store.query(sparql)
+        assert isinstance(result, px.QuerySolutions)  # SELECT queries yield solutions
         for solution in result:
             row = {}
             for var in variables:
@@ -501,12 +501,12 @@ class OWLExtractor:
         Returns:
             The versionIRI as a string, or None if not found.
         """
-        query = f"""
+        query = """
         PREFIX owl: <http://www.w3.org/2002/07/owl#>
-        SELECT ?versionIRI WHERE {{
+        SELECT ?versionIRI WHERE {
             ?ont a owl:Ontology .
             ?ont owl:versionIRI ?versionIRI .
-        }}
+        }
         """
         for row in self._query(query):
             version_node = row["versionIRI"]
@@ -521,12 +521,12 @@ class OWLExtractor:
         Returns:
             The versionInfo string, or None if not found.
         """
-        query = f"""
+        query = """
         PREFIX owl: <http://www.w3.org/2002/07/owl#>
-        SELECT ?versionInfo WHERE {{
+        SELECT ?versionInfo WHERE {
             ?ont a owl:Ontology .
             ?ont owl:versionInfo ?versionInfo .
-        }}
+        }
         """
         for row in self._query(query):
             version_node = row["versionInfo"]

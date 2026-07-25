@@ -321,7 +321,7 @@ def build_packets(
             typer.echo(f"  Processed {entities_processed} entities, {packets_created} packets...")
 
     stats = store.get_stats()
-    typer.echo(f"\nSummary:")
+    typer.echo("\nSummary:")
     typer.echo(f"  Entities processed: {entities_processed}")
     typer.echo(f"  Entities with Mondo mapping: {entities_mapped}")
     typer.echo(f"  Packets created: {packets_created}")
@@ -423,7 +423,7 @@ def build_packets_multi(
         from mondo_ai.config import ResourceConfig
         for r in cfg.resources:
             resource_configs[r.id.lower()] = r
-        typer.echo(f"Using content weights from config")
+        typer.echo("Using content weights from config")
 
     merger = PacketMerger()
 
@@ -513,7 +513,7 @@ def build_packets_multi(
     store.add_packets(merged_packets)
 
     stats = store.get_stats()
-    typer.echo(f"\nSummary:")
+    typer.echo("\nSummary:")
     typer.echo(f"  Total statements: {total_statements}")
     typer.echo(f"  Merged packets: {len(merged_packets)}")
     typer.echo(f"  JSONL store: {output_dir}")
@@ -610,7 +610,7 @@ def score(
                 sort_keys=False,
             )
 
-    typer.echo(f"\nSummary:")
+    typer.echo("\nSummary:")
     typer.echo(f"  ACCEPT (NER >= {accept_threshold}): {accept_count}")
     typer.echo(f"  REJECT (NER <= {reject_threshold}): {reject_count}")
     typer.echo(f"  REVIEW (needs human review): {review_count}")
@@ -697,7 +697,7 @@ def enrich(
             # Determine why it was skipped
             from mondo_ai.enrichment import has_literature_evidence
             if not force and has_literature_evidence(packet):
-                typer.echo(f"  Skipping (already has literature evidence)")
+                typer.echo("  Skipping (already has literature evidence)")
                 skipped_enriched += 1
             else:
                 score = 0.0
@@ -727,7 +727,7 @@ def enrich(
                     sort_keys=False,
                 )
 
-    typer.echo(f"\nSummary:")
+    typer.echo("\nSummary:")
     typer.echo(f"  Enriched: {enriched_count} packets")
     if skipped_enriched > 0:
         typer.echo(f"  Skipped (already enriched): {skipped_enriched}")
@@ -834,7 +834,7 @@ def synthesize(
         except Exception as e:
             typer.echo(f"  Error: {e}", err=True)
 
-    typer.echo(f"\nSynthesis complete")
+    typer.echo("\nSynthesis complete")
 
 
 # =============================================================================
@@ -1068,7 +1068,7 @@ def show(
             syn = packet.evidence_synthesis
             score = syn.score.value if syn.score else None
             score_str = f"{score:.2f}" if score is not None else "N/A"
-            typer.echo(f"Synthesis:")
+            typer.echo("Synthesis:")
             typer.echo(f"  Score: {score_str}")
             typer.echo(f"  Direction: {syn.direction or 'N/A'}")
             typer.echo(f"  Summary: {syn.summary or 'N/A'}")
@@ -1178,7 +1178,7 @@ def validate(
             with open(filepath, "w") as f:
                 yaml.dump(cleaned, f, default_flow_style=False, sort_keys=False)
 
-        typer.echo(f"")
+        typer.echo("")
         typer.echo(f"Exported {len(result.validated_records)} records to: {export_records}/")
 
     if strict and result.errors:
@@ -1190,8 +1190,8 @@ def validate(
 # =============================================================================
 
 
-@app.command()
-def stats(
+@app.command(name="index-stats")
+def index_stats(
     db_path: Annotated[
         Path,
         typer.Option("--db", help="Path to index database"),
@@ -1203,8 +1203,8 @@ def stats(
 
     Examples:
 
-        mondo-ai stats
-        mondo-ai stats --db custom_index.db
+        mondo-ai index-stats
+        mondo-ai index-stats --db custom_index.db
     """
     from mondo_ai.storage import PacketIndex
 
@@ -1411,7 +1411,7 @@ def jsonl_export(
     max_bytes = max_file_size * 1024 * 1024
     store = JSONLPacketStore(store_dir, max_file_size=max_bytes)
 
-    typer.echo(f"Exporting packets to JSONL store")
+    typer.echo("Exporting packets to JSONL store")
     typer.echo(f"  Source: {source}")
     typer.echo(f"  Store: {store_dir}")
     typer.echo(f"  Max file size: {max_file_size} MB")
@@ -1436,7 +1436,7 @@ def jsonl_export(
             skipped_count += 1
 
     stats = store.get_stats()
-    typer.echo(f"\nExport complete:")
+    typer.echo("\nExport complete:")
     typer.echo(f"  Packets added: {added_count}")
     typer.echo(f"  Packets skipped (in sealed files): {skipped_count}")
     typer.echo(f"  Total files: {stats['total_files']}")
@@ -1535,6 +1535,7 @@ def jsonl_get(
 
     # Show location info
     location = store.get_location(packet_id)
+    assert location is not None  # packet existence checked above
     is_sealed = store.is_in_sealed_file(packet_id)
     status_str = "sealed 🔒" if is_sealed else "open 📝"
     typer.echo(f"Found in: {location.file} ({status_str})")
@@ -1761,7 +1762,8 @@ def jsonl_browse(
         typer.echo("-" * 85)
         for r in results:
             score_str = f"{r['score']:.2f}" if r["score"] is not None else "N/A"
-            obj_short = (r["object"][:27] + "...") if len(r["object"]) > 30 else r["object"]
+            obj_val = str(r["object"]) if r["object"] is not None else ""
+            obj_short = (obj_val[:27] + "...") if len(obj_val) > 30 else obj_val
             typer.echo(f"{r['id']:<20} {r['subject']:<15} {score_str:>6} {r['sources']:<12} {obj_short:<30}")
 
 
@@ -1822,7 +1824,7 @@ def jsonl_load(
     typer.echo(f"  Files found: {len(files)}")
     typer.echo("")
 
-    packets = []
+    packets: list[EvidencePacket] = []
     total_lines = 0
     errors = 0
 
@@ -1876,8 +1878,8 @@ def jsonl_load(
                 pred = packet.statement.predicate.label or packet.statement.predicate.code or "unknown"
             predicates[pred] = predicates.get(pred, 0) + 1
 
-            for line in packet.hasEvidenceLines or []:
-                for item in line.hasEvidenceItems or []:
+            for ev_line in packet.hasEvidenceLines or []:
+                for item in ev_line.hasEvidenceItems or []:
                     if hasattr(item, "sourceId") and item.sourceId:
                         sources[item.sourceId] = sources.get(item.sourceId, 0) + 1
 

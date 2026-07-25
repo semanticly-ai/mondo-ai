@@ -26,7 +26,6 @@ from mondo_ai.datamodel import (
     CurationStatus,
     EvidenceItemType,
     EvidencePacket,
-    RecommendedAction,
     SieveDocument,
     SieveEvidenceLine,
     SieveStatement,
@@ -126,7 +125,7 @@ def test_pubmed_enrichment():
         assert len(enriched.hasEvidenceLines) > original_line_count, \
             "Enrichment should add literature evidence lines"
 
-        print(f"\nAfter enrichment:")
+        print("\nAfter enrichment:")
         print(f"  Total evidence lines: {len(enriched.hasEvidenceLines)}")
 
         for line in enriched.hasEvidenceLines:
@@ -170,7 +169,7 @@ def test_ai_synthesis():
     assert synthesis.summary, "Should have summary"
     assert synthesis.score is not None, "Should have score"
 
-    print(f"\nAI Synthesis (stored in packet.evidence_synthesis):")
+    print("\nAI Synthesis (stored in packet.evidence_synthesis):")
     print(f"  Score: {packet.evidence_synthesis.score}")
     print(f"  Summary: {packet.evidence_synthesis.summary[:200]}...")
     if packet.evidence_synthesis.cited_evidence:
@@ -259,7 +258,7 @@ def test_full_pipeline():
         f.flush()
         with open(f.name) as rf:
             content = rf.read()
-            print(f"\n    YAML preview (first 50 lines):")
+            print("\n    YAML preview (first 50 lines):")
             for i, line in enumerate(content.split('\n')[:50]):
                 print(f"    {line}")
 
@@ -333,13 +332,13 @@ def test_pipeline_runner_multi_source():
         runner_kwargs["ordo_owl_path"] = ordo_path
         print(f"[✓] ORDO available: {ordo_path}")
     else:
-        print(f"[✗] ORDO not available (skipping)")
+        print("[✗] ORDO not available (skipping)")
 
     if doid_path.exists():
         runner_kwargs["doid_owl_path"] = doid_path
         print(f"[✓] DOID available: {doid_path}")
     else:
-        print(f"[✗] DOID not available (skipping)")
+        print("[✗] DOID not available (skipping)")
 
     runner = PipelineRunner(**runner_kwargs)
 
@@ -374,16 +373,16 @@ def test_pipeline_runner_multi_source():
             pred_str = "unknown"
         predicates[pred_str] = predicates.get(pred_str, 0) + 1
 
-    print(f"\n[2] Packets by source:")
+    print("\n[2] Packets by source:")
     for source, count in sorted(sources.items()):
         print(f"    - {source}: {count}")
 
-    print(f"\n[3] Packets by predicate:")
+    print("\n[3] Packets by predicate:")
     for pred, count in sorted(predicates.items()):
         print(f"    - {pred}: {count}")
 
     # Verify packet structure
-    print(f"\n[4] Verifying packet structure...")
+    print("\n[4] Verifying packet structure...")
     for packet in packets[:3]:
         assert packet.id, "Packet should have ID"
         assert packet.statement, "Packet should have statement"
@@ -392,7 +391,7 @@ def test_pipeline_runner_multi_source():
         print(f"    {packet.id}: {packet.statement.subjectLabel} -> {packet.statement.object}")
 
     # Export to temp directory
-    print(f"\n[5] Exporting packets...")
+    print("\n[5] Exporting packets...")
     with tempfile.TemporaryDirectory() as tmpdir:
         tmppath = Path(tmpdir)
         export_packets_yaml(packets, tmppath)

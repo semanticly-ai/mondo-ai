@@ -91,6 +91,8 @@ def coding_to_predicate(coding: Coding) -> StatementPredicate | None:
         "IAO:0000115": StatementPredicate.DEFINITION,
         "rdfs:subClassOf": StatementPredicate.PARENT,
     }
+    if coding.code is None:
+        return None
     return code_mapping.get(coding.code)
 
 

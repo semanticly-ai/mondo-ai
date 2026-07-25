@@ -11,7 +11,6 @@ Example:
     ...     print(paper.title)
 """
 
-import hashlib
 import os
 import time
 from dataclasses import dataclass
@@ -297,7 +296,7 @@ class PubMedClient:
 
             paper = PubMedPaper(
                 pmid=pmid,
-                title=title,
+                title=title or "",
                 abstract=abstract,
                 authors=authors,
                 journal=journal,

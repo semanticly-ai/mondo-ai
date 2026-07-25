@@ -1,6 +1,5 @@
 """Tests for JSONL packet storage system."""
 
-import json
 import tempfile
 from pathlib import Path
 
@@ -13,7 +12,6 @@ from mondo_ai.datamodel import (
     SieveStatement,
 )
 from mondo_ai.storage.jsonl_store import (
-    DEFAULT_MAX_FILE_SIZE,
     FileMetadata,
     JSONLPacketStore,
     Manifest,
@@ -329,6 +327,7 @@ class TestJSONLPacketStore:
             # If sealed, packet should be skipped
             loc2 = store.get_location("pkt_deterministic")
             assert loc2 is not None
+            assert loc1 is not None
             # The file should be the same or packet was skipped
             assert loc2.file == loc1.file or filename2 == loc1.file
 
@@ -368,6 +367,7 @@ class TestJSONLPacketStoreIntegration:
 
             sealed_before = store.get_stats()["sealed_files"]
             files_before = {f["filename"]: f["packet_count"] for f in store.list_files() if f["status"] == "sealed"}
+            assert sealed_before >= 1, "Expected at least one sealed file after the first run"
 
             # Second run: try to re-add same packets + new ones
             batch2 = [_create_test_packet(f"pkt_{i:04d}") for i in range(25)]
@@ -375,6 +375,7 @@ class TestJSONLPacketStoreIntegration:
 
             # Packets in sealed files should be skipped
             skipped = sum(1 for added, _ in results.values() if not added)
+            assert skipped >= 1, "Expected re-added packets in sealed files to be skipped"
 
             # Sealed files should not change
             files_after = {f["filename"]: f["packet_count"] for f in store.list_files() if f["status"] == "sealed"}
@@ -403,6 +404,7 @@ class TestPacketUpdateAndDeduplication:
 
             # Index should point to new location
             assert loc2 is not None
+            assert loc1 is not None
             assert loc2.offset > loc1.offset  # New version is appended after original
 
             # Retrieved packet should have updated data
@@ -505,6 +507,7 @@ class TestPacketUpdateAndDeduplication:
 
             # pkt_002 should be updated
             pkt_002 = store.get_packet("pkt_002")
+            assert pkt_002 is not None
             assert pkt_002.statement.subject == "MONDO:UPDATED"
 
 
@@ -534,6 +537,7 @@ class TestMergeEvidence:
 
             # Retrieved packet should have evidence
             retrieved = store.get_packet("pkt_merge")
+            assert retrieved is not None
             assert retrieved.hasEvidenceLines is not None
             assert len(retrieved.hasEvidenceLines) == 1
             assert retrieved.hasEvidenceLines[0].id == "line_001"
@@ -561,6 +565,8 @@ class TestMergeEvidence:
             assert updated is False
 
             retrieved = store.get_packet("pkt_dedup_merge")
+            assert retrieved is not None
+            assert retrieved.hasEvidenceLines is not None
             assert len(retrieved.hasEvidenceLines) == 1
 
     def test_merge_evidence_nonexistent_packet_raises(self) -> None:

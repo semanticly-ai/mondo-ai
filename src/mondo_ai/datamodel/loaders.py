@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+from pydantic import BaseModel
 
 from mondo_ai.datamodel.sieve_models import (
     ConcordanceItem,
@@ -21,7 +22,7 @@ from mondo_ai.datamodel.sieve_models import (
 
 
 # Map type strings to classes
-EVIDENCE_ITEM_TYPES = {
+EVIDENCE_ITEM_TYPES: dict[str, type[BaseModel]] = {
     "ConcordanceItem": ConcordanceItem,
     "SieveDocument": SieveDocument,
     "SieveDataItem": SieveDataItem,
@@ -53,7 +54,7 @@ def _convert_evidence_items(data: dict[str, Any]) -> dict[str, Any]:
         if "hasEvidenceItems" not in line or not line["hasEvidenceItems"]:
             continue
 
-        converted_items = []
+        converted_items: list[Any] = []
         for item in line["hasEvidenceItems"]:
             if isinstance(item, dict):
                 item_type = item.get("type", "")

@@ -13,9 +13,8 @@ Example:
 
 import sqlite3
 from dataclasses import dataclass
-from datetime import date
 from pathlib import Path
-from typing import Iterator
+from typing import Any, Iterator
 
 from mondo_ai.datamodel import EvidencePacket, load_packet
 
@@ -230,8 +229,8 @@ class PacketIndex:
         """
         conn = self._get_conn()
 
-        conditions = []
-        params = []
+        conditions: list[str] = []
+        params: list[Any] = []
 
         if subject_id:
             conditions.append("subject_id = ?")

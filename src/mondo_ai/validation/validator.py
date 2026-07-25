@@ -49,7 +49,7 @@ class ValidationResult:
     def summary(self) -> str:
         """Return a summary of validation results."""
         lines = [
-            f"Validation Summary:",
+            "Validation Summary:",
             f"  Valid packets: {self.valid_count}",
             f"  Invalid packets: {self.invalid_count}",
         ]

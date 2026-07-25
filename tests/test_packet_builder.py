@@ -1,12 +1,9 @@
 """Tests for the packet builder module."""
 
-import pytest
-from datetime import date
 
 from mondo_ai.packets.builder import (
     PacketBuilder,
     PacketMerger,
-    MONDO_CONSORTIUM,
     _hash_content,
     _generate_packet_id,
     _generate_statement_id,
@@ -20,7 +17,6 @@ from mondo_ai.datamodel import (
     EvidenceItemType,
     SieveDocument,
     SieveStatement,
-    EvidencePacket,
     TrustLevel,
 )
 

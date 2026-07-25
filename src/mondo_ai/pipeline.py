@@ -10,7 +10,7 @@ Example:
 from datetime import date
 from hashlib import sha256
 from pathlib import Path
-from uuid import uuid4
+from typing import Any
 
 import yaml
 
@@ -29,9 +29,8 @@ from mondo_ai.datamodel import (
 )
 from mondo_ai.extraction.owl_extractor import OWLExtractor
 from mondo_ai.mapping.sssom_reader import SSSOMReader
-from mondo_ai.packets.builder import PacketBuilder, PacketMerger
+from mondo_ai.packets.builder import PacketBuilder
 from mondo_ai.scoring.scorer import Scorer
-from mondo_ai.statements.builder import StatementBuilder
 
 
 def _generate_packet_id(counter: int) -> str:
@@ -416,7 +415,7 @@ def export_packets_summary(packets: list[EvidencePacket], output_path: str | Pat
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     # Create summary
-    summary = {
+    summary: dict[str, Any] = {
         "total_packets": len(packets),
         "by_status": {},
         "by_predicate": {},
@@ -451,9 +450,9 @@ def export_packets_summary(packets: list[EvidencePacket], output_path: str | Pat
         summary["by_predicate"][pred_str] = summary["by_predicate"].get(pred_str, 0) + 1
 
         # Get score from synthesis if available
-        score = 0
+        score: float = 0.0
         if packet.evidence_synthesis and packet.evidence_synthesis.score:
-            score = packet.evidence_synthesis.score.value or 0
+            score = packet.evidence_synthesis.score.value or 0.0
 
         if score >= 0.7:
             summary["score_distribution"]["high (>=0.7)"] += 1

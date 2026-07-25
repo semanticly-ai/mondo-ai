@@ -310,6 +310,7 @@ class MondoExtractor:
                 variables = []
 
         result = self._store.query(sparql)
+        assert isinstance(result, px.QuerySolutions)  # SELECT queries yield solutions
         for solution in result:
             row = {}
             for var in variables:
@@ -508,14 +509,10 @@ class MondoExtractor:
                 entity_iri
             )
 
-            # Build evidence lines for this entity
-            evidence_lines = self._build_entity_evidence_lines(
-                entity_id=curie,
-                version=version,
-                synonyms=synonyms,
-                definition_provenance=def_provenance,
-            )
-
+            # NOTE: entity-level evidence lines are not attached here. EntitySnapshot
+            # has no field for them, so the primary extract() path drops them. Only
+            # extract_mondo_with_evidence() captures evidence lines (via a separate
+            # evidence_by_entity mapping). See issues/ for wiring this into the pipeline.
             yield EntitySnapshot(
                 id=curie,
                 label=label,
@@ -524,8 +521,6 @@ class MondoExtractor:
                 parents=parents,
                 mappings=[],
                 deprecated=False,
-                # Store evidence lines in extensions or a custom field
-                # For now, we'll need to handle this at the packet building stage
             )
 
             count += 1

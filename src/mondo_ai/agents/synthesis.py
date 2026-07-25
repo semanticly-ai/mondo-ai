@@ -11,7 +11,8 @@ Example:
 """
 
 import os
-from datetime import date, datetime, timezone
+from datetime import date
+from typing import Any
 from uuid import uuid4
 
 from pydantic import BaseModel
@@ -94,7 +95,7 @@ class SynthesisAgent:
             )
 
         self.prompt_version = "v1.0"
-        self._agent = None
+        self._agent: Any = None
         self._initialize_agent()
 
     def _initialize_agent(self) -> None:
@@ -151,7 +152,7 @@ class SynthesisAgent:
                 name=self.model,
                 description=f"AI synthesis agent ({self.provider})",
             ),
-            date=str(date.today()),
+            date=date.today(),
             used=[f"prompt_version:{self.prompt_version}"],
         )
 

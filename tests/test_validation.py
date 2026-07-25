@@ -1,6 +1,5 @@
 """Tests for the validation module."""
 
-import pytest
 from pathlib import Path
 import tempfile
 import yaml

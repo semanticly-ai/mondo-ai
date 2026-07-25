@@ -139,9 +139,9 @@ def build_synthesis_prompt(packet) -> str:
         predicate = "unknown"
 
     # Get current evidence score from synthesis if available
-    evidence_score = 0
+    evidence_score: float = 0.0
     if packet.evidence_synthesis and packet.evidence_synthesis.score:
-        evidence_score = packet.evidence_synthesis.score.value or 0
+        evidence_score = packet.evidence_synthesis.score.value or 0.0
     else:
         # Calculate basic score from evidence lines
         if packet.hasEvidenceLines:
