@@ -270,7 +270,7 @@ run-pipeline:
 # Generate pydantic models from LinkML schema (SIEVE-based)
 [group('pipeline')]
 gen-pydantic:
-    uv run gen-pydantic --pydantic-version 2 {{schema_path}} > src/mondo_ai/datamodel/sieve_models.py
+    uv run gen-pydantic {{schema_path}} > src/mondo_ai/datamodel/sieve_models.py
 
 # Migrate existing evidence packets to SIEVE format
 [group('pipeline')]

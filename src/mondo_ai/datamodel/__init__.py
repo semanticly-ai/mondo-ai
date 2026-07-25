@@ -30,7 +30,6 @@ from mondo_ai.datamodel.sieve_models import (
     DataItem,
     DataSet,
     StudyResult,
-    Method,
     Activity,
     Contribution,
     Agent,
@@ -59,14 +58,12 @@ from mondo_ai.datamodel.sieve_models import (
     EntitySnapshot,
     Synonym,
     EntityMapping,
-    PipelineRun,
 )
 
 # Mondo-AI specific enums
 from mondo_ai.datamodel.sieve_models import (
     StatementPredicate,
     RecommendedAction,
-    RunStatus,
     SynonymScope,
 )
 
@@ -109,7 +106,6 @@ __all__ = [
     "DataItem",
     "DataSet",
     "StudyResult",
-    "Method",
     "Activity",
     "Contribution",
     "Agent",
@@ -132,14 +128,12 @@ __all__ = [
     "ContributionType",
     "StatementPredicate",
     "RecommendedAction",
-    "RunStatus",
     "SynonymScope",
     # Mondo-AI specific models
     "ResourceSnapshot",
     "EntitySnapshot",
     "Synonym",
     "EntityMapping",
-    "PipelineRun",
     # Mapping utilities
     "predicate_to_coding",
     "coding_to_predicate",

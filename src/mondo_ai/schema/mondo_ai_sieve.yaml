@@ -100,6 +100,14 @@ classes:
       deprecated:
         range: boolean
         description: Whether this entity is deprecated/obsolete
+      definition_orcids:
+        range: string
+        multivalued: true
+        description: ORCID identifiers found in definition sources
+      definition_pmids:
+        range: string
+        multivalued: true
+        description: PMID identifiers found in definition sources
 
   Synonym:
     description: A synonym with scope and source information.
@@ -117,6 +125,14 @@ classes:
       source:
         range: uriorcurie
         description: Source of this synonym assertion
+      orcids:
+        range: string
+        multivalued: true
+        description: ORCID identifiers found in annotation sources
+      pmids:
+        range: string
+        multivalued: true
+        description: PMID identifiers found in annotation sources
 
   EntityMapping:
     description: A mapping/cross-reference to another ontology entity.
@@ -132,38 +148,6 @@ classes:
         range: string
         description: Source of this mapping
 
-  # ---------------------------------------------------------------------------
-  # Pipeline Run Metadata
-  # ---------------------------------------------------------------------------
-
-  PipelineRun:
-    description: Metadata for a pipeline execution run.
-    attributes:
-      run_id:
-        identifier: true
-        range: string
-        description: Unique run identifier (typically timestamp-based)
-      started_at:
-        range: datetime
-        required: true
-      completed_at:
-        range: datetime
-      status:
-        range: RunStatus
-        description: Status of the run
-      config_snapshot:
-        range: string
-        description: JSON-serialized config used for this run
-      sources_processed:
-        multivalued: true
-        range: string
-        description: List of source IDs processed
-      packets_created:
-        range: integer
-        description: Number of evidence packets created
-      error_message:
-        range: string
-        description: Error message if run failed
 
 
 # =============================================================================
@@ -223,14 +207,3 @@ enums:
       REVIEW:
         description: Requires human review (uncertain)
 
-  RunStatus:
-    description: Status of a pipeline run.
-    permissible_values:
-      RUNNING:
-        description: Run is currently in progress
-      COMPLETED:
-        description: Run completed successfully
-      FAILED:
-        description: Run failed with error
-      CANCELLED:
-        description: Run was cancelled

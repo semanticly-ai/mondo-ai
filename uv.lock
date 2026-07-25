@@ -6726,7 +6726,6 @@ version = "0.1.0"
 source = { editable = "../sieve" }
 dependencies = [
     { name = "authlib" },
-    { name = "duckdb" },
     { name = "httpx" },
     { name = "linkml-runtime" },
     { name = "pydantic" },
@@ -6735,13 +6734,11 @@ dependencies = [
     { name = "rdflib" },
     { name = "streamlit" },
     { name = "typer" },
-    { name = "watchdog" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "authlib", specifier = ">=1.6.5" },
-    { name = "duckdb", specifier = ">=0.9.0" },
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "linkml-runtime", specifier = ">=1.9.4" },
     { name = "pydantic", specifier = ">=2.0.0" },
@@ -6750,7 +6747,6 @@ requires-dist = [
     { name = "rdflib", specifier = ">=7.0.0" },
     { name = "streamlit", specifier = ">=1.28.0" },
     { name = "typer", specifier = ">=0.9.0" },
-    { name = "watchdog", specifier = ">=3.0.0" },
 ]
 
 [package.metadata.requires-dev]
