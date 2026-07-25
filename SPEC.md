@@ -22,7 +22,7 @@ to Pydantic v2.
 
 ## 2. Technology stack
 
-- **Python** ≥ 3.10, < 4.0 (developed and tested on 3.11.11)
+- **Python** ≥ 3.10, < 4.0 (pinned to 3.11 via `.python-version`)
 - **uv** for dependency management, **just** as the command runner
 - **LinkML** + `linkml-runtime` for the schema; `gen-pydantic` generates the models
 - **Pydantic v2** for the runtime datamodel
@@ -214,40 +214,30 @@ Templates live in `web/templates/`.
 
 ## 11. Testing and tooling
 
-`just test` runs `pytest`, `mypy`, and `ruff` — currently **green**: 227 passed,
-3 skipped (skips need AI API keys or an external SSSOM file), mypy clean across 45
-source files, ruff clean.
+`just test` runs `pytest`, `doctest`, `mypy`, and `ruff` — currently **green**:
+230 tests passed / 3 skipped (skips need AI API keys or an external SSSOM file),
+31 doctests passed / 1 skipped, mypy clean across 45 source files, ruff clean.
 
-Other recipes: `just pytest`, `just mypy`, `just format`, `just doctest`,
+Other recipes: `just pytest`, `just doctest`, `just mypy`, `just format`,
 `just gen-pydantic` (regenerate `sieve_models.py`), `just run-pipeline`,
 `just serve-web`, plus grouped acquisition/extraction/build/validate/score/enrich
 recipes in `project.justfile`.
 
-`sieve_models.py` is generated code and is excluded from type-checking via
-`mypy.ini`.
+The interpreter is pinned via `.python-version` (3.11) and the package ships a
+`py.typed` marker (PEP 561). `sieve_models.py` is generated code and is excluded
+from type-checking via `mypy.ini`.
 
 ## 12. Known limitations
 
-These are tracked as drafts under `issues/`:
-
-- **Failing doctests** (`issues/issue_failing_doctests.md`). `just doctest` has 18
-  failures — illustrative docstring snippets that never ran as real doctests plus a
-  few stale after the refactor. `just doctest` is not part of `just test`. There is
-  also a CLAUDE.md-vs-justfile discrepancy about whether `just test` runs doctests.
-- **Entity-level evidence lines dropped on the primary extraction path**
-  (`issues/issue_entity_evidence_lines.md`). `EntitySnapshot` has no field for
-  evidence lines, so `MondoExtractor.extract()` (used by the CLI and pipeline)
-  discards them; only the standalone `extract_mondo_with_evidence()` captures them
-  via a side-channel mapping.
-- **Packaging/reproducibility** (`issues/issue_tooling_reproducibility.md`). No
-  `.python-version` pin (uv can select 3.14 on a fresh sync) and no
-  `src/mondo_ai/py.typed` marker (the package ships types but is seen as untyped by
-  downstream consumers).
-
-Open threads also tracked in `todo.md`:
+Open threads tracked in `todo.md`:
 
 - **Low subclass axiom counts** — DOID yields 16,564 `subClassOf` packets, expected
   to be more; investigate `_extract_hierarchy` filtering and SSSOM/IRI-filter
   coverage.
 - **Journal-quality signal for scoring** — whether to weight literature evidence by
   journal impact or a similar metric (open design question).
+
+`MondoExtractor` (Mondo-native extraction with consortium/expert/literature
+provenance via `extract_mondo_with_evidence`) is exercised only by tests; it is not
+yet wired into `PipelineRunner`, which currently builds evidence for OMIM/ORDO/DOID
+through `OWLExtractor`. Integrating the Mondo path into the pipeline is a future step.
