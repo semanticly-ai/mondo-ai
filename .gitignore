@@ -141,3 +141,7 @@ dmypy.json
 .vscode
 /data
 .DS_Store
+
+# Generated SQLite packet index
+*.db
+packet_index.db
