@@ -464,13 +464,18 @@ class MondoExtractor:
             entities=entities,
         )
 
-    def _extract_entities(
+    def _iter_entities_with_evidence(
         self,
         version: str,
         limit: int | None = None,
         skip_deprecated: bool = True,
-    ) -> Iterator[EntitySnapshot]:
-        """Extract all entities with their properties and provenance."""
+    ) -> Iterator[tuple[EntitySnapshot, list[SieveEvidenceLine]]]:
+        """Extract entities together with their evidence lines.
+
+        Single source of truth for Mondo entity extraction. Callers that only
+        need the snapshot (``extract``) discard the evidence; callers that need
+        provenance (``extract_mondo_with_evidence``) keep it.
+        """
         query = """
         PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
         PREFIX owl: <http://www.w3.org/2002/07/owl#>
@@ -509,11 +514,7 @@ class MondoExtractor:
                 entity_iri
             )
 
-            # NOTE: entity-level evidence lines are not attached here. EntitySnapshot
-            # has no field for them, so the primary extract() path drops them. Only
-            # extract_mondo_with_evidence() captures evidence lines (via a separate
-            # evidence_by_entity mapping). See issues/ for wiring this into the pipeline.
-            yield EntitySnapshot(
+            entity = EntitySnapshot(
                 id=curie,
                 label=label,
                 synonyms=[s for s, _ in synonyms],
@@ -522,10 +523,29 @@ class MondoExtractor:
                 mappings=[],
                 deprecated=False,
             )
+            evidence_lines = self._build_entity_evidence_lines(
+                entity_id=curie,
+                version=version,
+                synonyms=synonyms,
+                definition_provenance=def_provenance,
+            )
+            yield entity, evidence_lines
 
             count += 1
             if limit and count >= limit:
                 return
+
+    def _extract_entities(
+        self,
+        version: str,
+        limit: int | None = None,
+        skip_deprecated: bool = True,
+    ) -> Iterator[EntitySnapshot]:
+        """Extract entities as snapshots (evidence lines are discarded here)."""
+        for entity, _ in self._iter_entities_with_evidence(
+            version=version, limit=limit, skip_deprecated=skip_deprecated
+        ):
+            yield entity
 
     def _get_synonyms_with_provenance(
         self, entity_iri: str, entity_id: str
@@ -669,70 +689,11 @@ def extract_mondo_with_evidence(
     entities: list[EntitySnapshot] = []
     evidence_by_entity: dict[str, list[SieveEvidenceLine]] = {}
 
-    query = """
-    PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-    PREFIX owl: <http://www.w3.org/2002/07/owl#>
-
-    SELECT DISTINCT ?entity ?label WHERE {
-        ?entity a owl:Class .
-        ?entity rdfs:label ?label .
-        FILTER(isIRI(?entity) && CONTAINS(STR(?entity), "MONDO_"))
-    }
-    """
-
-    entity_labels: dict[str, str] = {}
-    for row in extractor._query(query):
-        entity_iri = extractor._get_value(row["entity"])
-        label = extractor._get_value(row["label"])
-        if entity_iri and label:
-            entity_labels[entity_iri] = label
-
-    count = 0
-    converter = extractor._get_curie_converter()
-
-    for entity_iri, label in entity_labels.items():
-        if extractor._is_deprecated(entity_iri):
-            continue
-
-        curie = _curie_from_iri(entity_iri, converter)
-
-        # Get synonyms with provenance
-        synonyms_with_prov = list(
-            extractor._get_synonyms_with_provenance(entity_iri, curie)
-        )
-
-        # Get parents
-        parents = list(extractor._get_parents(entity_iri, converter))
-
-        # Get definition with provenance
-        definition, def_provenance = extractor._get_definition_with_provenance(
-            entity_iri
-        )
-
-        # Build evidence lines
-        evidence_lines = extractor._build_entity_evidence_lines(
-            entity_id=curie,
-            version=version,
-            synonyms=synonyms_with_prov,
-            definition_provenance=def_provenance,
-        )
-
-        entity = EntitySnapshot(
-            id=curie,
-            label=label,
-            synonyms=[s for s, _ in synonyms_with_prov],
-            definition=definition,
-            parents=parents,
-            mappings=[],
-            deprecated=False,
-        )
-
+    for entity, evidence_lines in extractor._iter_entities_with_evidence(
+        version=version, limit=limit
+    ):
         entities.append(entity)
-        evidence_by_entity[curie] = evidence_lines
-
-        count += 1
-        if limit and count >= limit:
-            break
+        evidence_by_entity[entity.id] = evidence_lines
 
     checksum = sha256(Path(owl_path).read_bytes()).hexdigest()
 
