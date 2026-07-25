@@ -1,0 +1,233 @@
+{% extends "base.html" %}
+{% block title %}{{ packet.id }} - MondoAI{% endblock %}
+{% block content %}
+<div class="detail-header">
+    <a href="/packets" style="font-size:0.85rem;">&laquo; Back to list</a>
+    <h1 style="margin-top:0.5rem;">
+        {% if packet.statement and packet.statement.subjectLabel %}
+            {{ packet.statement.subjectLabel }}
+        {% else %}
+            Evidence Packet
+        {% endif %}
+    </h1>
+    <div class="packet-id">{{ packet.id }}</div>
+</div>
+
+<!-- Statement -->
+<div class="card">
+    <h2>Statement</h2>
+    {% if packet.statement %}
+    {% set stmt = packet.statement %}
+    <div class="field-grid">
+        <span class="field-label">Subject</span>
+        <span>
+            {% if stmt.subjectLabel %}{{ stmt.subjectLabel }} {% endif %}
+            <span class="text-muted" style="font-family:var(--mono); font-size:0.85rem;">{{ stmt.subject or '' }}</span>
+        </span>
+        <span class="field-label">Predicate</span>
+        <span>
+            {% if stmt.predicate %}
+                {{ stmt.predicate.label or stmt.predicate.code or '' }}
+                {% if stmt.predicate.code and stmt.predicate.label %}
+                <span class="text-muted" style="font-size:0.8rem;">({{ stmt.predicate.code }})</span>
+                {% endif %}
+            {% endif %}
+        </span>
+        <span class="field-label">Object</span>
+        <span>
+            {% if stmt.objectLabel %}{{ stmt.objectLabel }} {% endif %}
+            {% if stmt.object and stmt.object != stmt.objectLabel %}
+            <span class="text-muted" style="font-family:var(--mono); font-size:0.85rem;">{{ stmt.object }}</span>
+            {% endif %}
+        </span>
+        {% if stmt.statementText %}
+        <span class="field-label">Text</span>
+        <span>{{ stmt.statementText }}</span>
+        {% endif %}
+    </div>
+    {% endif %}
+</div>
+
+<!-- Status & Dates -->
+<div class="card">
+    <h2>Curation</h2>
+    <div class="field-grid">
+        <span class="field-label">Status</span>
+        <span><span class="badge badge-status-{{ packet.status or 'UNREVIEWED' }}">{{ packet.status or 'UNREVIEWED' }}</span></span>
+        {% if packet.created %}
+        <span class="field-label">Created</span>
+        <span>{{ packet.created }}</span>
+        {% endif %}
+        {% if packet.updated %}
+        <span class="field-label">Updated</span>
+        <span>{{ packet.updated }}</span>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Evidence Synthesis -->
+{% if packet.evidence_synthesis %}
+<div class="card">
+    <h2>Evidence Synthesis</h2>
+    {% set synth = packet.evidence_synthesis %}
+    <div class="field-grid">
+        {% if synth.direction %}
+        <span class="field-label">Direction</span>
+        <span><span class="badge badge-direction-{{ synth.direction }}">{{ synth.direction }}</span></span>
+        {% endif %}
+        {% if synth.score %}
+        <span class="field-label">Score</span>
+        <span><strong>{{ "%.3f"|format(synth.score.value) }}</strong>
+            {% if synth.score.description %}
+            <span class="text-muted" style="font-size:0.85rem;">({{ synth.score.description }})</span>
+            {% endif %}
+        </span>
+        {% endif %}
+    </div>
+    {% if synth.summary %}
+    <div style="margin-top: 0.75rem; padding: 0.75rem; background: #f8f9fa; border-radius: 4px; font-size: 0.9rem;">
+        {{ synth.summary }}
+    </div>
+    {% endif %}
+</div>
+{% endif %}
+
+<!-- Evidence Lines -->
+{% set lines = packet.hasEvidenceLines or [] %}
+{% if lines %}
+<div class="card">
+    <h2>Evidence Lines ({{ lines|length }})</h2>
+    {% for el in lines %}
+    <div style="margin-bottom: 1.5rem; {% if not loop.last %}border-bottom: 1px solid var(--border); padding-bottom: 1rem;{% endif %}">
+        <div style="display: flex; gap: 0.75rem; align-items: center; margin-bottom: 0.5rem;">
+            <strong>Line {{ loop.index }}</strong>
+            {% if el.directionOfEvidenceProvided %}
+            <span class="badge badge-direction-{{ el.directionOfEvidenceProvided }}">{{ el.directionOfEvidenceProvided }}</span>
+            {% endif %}
+            {% if el.strengthOfEvidenceProvided %}
+            <span class="badge" style="background:#e9ecef;">{{ el.strengthOfEvidenceProvided }}</span>
+            {% endif %}
+            {% if el.scoreOfEvidenceProvided is not none %}
+            <span class="text-muted" style="font-size:0.85rem;">Score: {{ "%.3f"|format(el.scoreOfEvidenceProvided) }}</span>
+            {% endif %}
+        </div>
+
+        {% for item in el.hasEvidenceItems or [] %}
+        {% set item_type = item.type or item.__class__.__name__ %}
+        {% if 'Concordance' in item_type %}
+            {% set item_class = 'concordance' %}
+        {% elif 'Document' in item_type %}
+            {% set item_class = 'document' %}
+        {% elif 'Agent' in item_type %}
+            {% set item_class = 'agent' %}
+        {% elif 'Computational' in item_type %}
+            {% set item_class = 'computational' %}
+        {% else %}
+            {% set item_class = '' %}
+        {% endif %}
+
+        <div class="evidence-item {{ item_class }}">
+            <div style="font-weight:600; font-size:0.85rem; margin-bottom:0.4rem;">
+                {{ item_type }}
+                {% if item.evidenceItemType %}
+                <span class="text-muted" style="font-weight:400;">({{ item.evidenceItemType }})</span>
+                {% endif %}
+            </div>
+
+            {% if 'Concordance' in item_type %}
+            <div class="field-grid" style="font-size:0.85rem;">
+                {% if item.sourceName %}
+                <span class="field-label">Source</span>
+                <span>{{ item.sourceName }}{% if item.sourceVersion %} ({{ item.sourceVersion }}){% endif %}</span>
+                {% endif %}
+                {% if item.sourceSubject %}
+                <span class="field-label">Subject</span>
+                <span>{{ item.sourceSubjectLabel or '' }} <span class="text-muted" style="font-family:var(--mono);">{{ item.sourceSubject }}</span></span>
+                {% endif %}
+                {% if item.sourcePredicate %}
+                <span class="field-label">Predicate</span>
+                <span>{{ item.sourcePredicateLabel or item.sourcePredicate }}</span>
+                {% endif %}
+                {% if item.sourceObject %}
+                <span class="field-label">Object</span>
+                <span>{{ item.sourceObjectLabel or item.sourceObject }}</span>
+                {% endif %}
+                {% if item.mappingJustification %}
+                <span class="field-label">Justification</span>
+                <span style="font-family:var(--mono); font-size:0.8rem;">{{ item.mappingJustification }}</span>
+                {% endif %}
+            </div>
+
+            {% elif 'Document' in item_type %}
+            <div class="field-grid" style="font-size:0.85rem;">
+                {% if item.title %}
+                <span class="field-label">Title</span>
+                <span>{{ item.title }}</span>
+                {% endif %}
+                {% if item.pmid %}
+                <span class="field-label">PMID</span>
+                <span style="font-family:var(--mono);">{{ item.pmid }}</span>
+                {% endif %}
+                {% if item.quote %}
+                <span class="field-label">Quote</span>
+                <span style="font-style:italic;">"{{ item.quote }}"</span>
+                {% endif %}
+            </div>
+
+            {% elif 'Agent' in item_type %}
+            <div class="field-grid" style="font-size:0.85rem;">
+                {% if item.contributor %}
+                <span class="field-label">Contributor</span>
+                <span>{{ item.contributor.name or item.contributor.id }}</span>
+                {% endif %}
+                {% if item.trustLevel %}
+                <span class="field-label">Trust Level</span>
+                <span>{{ item.trustLevel }}</span>
+                {% endif %}
+                {% if item.channel %}
+                <span class="field-label">Channel</span>
+                <span>{{ item.channel }}</span>
+                {% endif %}
+                {% if item.content %}
+                <span class="field-label">Content</span>
+                <span>{{ item.content }}</span>
+                {% endif %}
+            </div>
+
+            {% elif 'Computational' in item_type %}
+            <div class="field-grid" style="font-size:0.85rem;">
+                {% if item.methodName %}
+                <span class="field-label">Method</span>
+                <span>{{ item.methodName }}</span>
+                {% endif %}
+                {% if item.value %}
+                <span class="field-label">Value</span>
+                <span>{{ item.value }}</span>
+                {% endif %}
+                {% if item.softwareVersion %}
+                <span class="field-label">Version</span>
+                <span>{{ item.softwareVersion }}</span>
+                {% endif %}
+            </div>
+
+            {% else %}
+            <div class="text-muted" style="font-size:0.85rem;">
+                {{ item.id or '' }}
+            </div>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+
+<!-- Raw JSON toggle -->
+<div class="card">
+    <h2>
+        Raw Data
+        <button class="btn btn-sm btn-outline" onclick="document.getElementById('raw-json').style.display = document.getElementById('raw-json').style.display === 'none' ? 'block' : 'none'" style="margin-left:0.5rem;">Toggle</button>
+    </h2>
+    <pre id="raw-json" style="display:none; overflow-x:auto; font-size:0.8rem; padding:1rem; background:#f8f9fa; border-radius:4px; max-height:600px; overflow-y:auto;">{{ packet.model_dump_json(indent=2, exclude_none=True) }}</pre>
+</div>
+{% endblock %}

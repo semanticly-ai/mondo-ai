@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block title %}Not Found - MondoAI{% endblock %}
+{% block content %}
+<div style="text-align:center; padding: 4rem 0;">
+    <h1 style="font-size:3rem; color:var(--text-muted);">404</h1>
+    <p>Packet <code>{{ packet_id }}</code> not found.</p>
+    <a href="/packets" class="btn" style="margin-top:1rem; display:inline-block;">Browse Packets</a>
+</div>
+{% endblock %}

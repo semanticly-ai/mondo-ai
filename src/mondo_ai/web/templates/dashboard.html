@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+{% block title %}Dashboard - MondoAI{% endblock %}
+{% block content %}
+<h1>Evidence Packet Dashboard</h1>
+
+<div class="stats-grid">
+    <div class="stat-card">
+        <div class="number">{{ "{:,}".format(stats.total_packets) }}</div>
+        <div class="label">Total Packets</div>
+    </div>
+    <div class="stat-card">
+        <div class="number">{{ "{:,}".format(stats.unique_subjects) }}</div>
+        <div class="label">Unique Mondo Subjects</div>
+    </div>
+    <div class="stat-card">
+        <div class="number">{{ "{:,}".format(stats.total_evidence_lines) }}</div>
+        <div class="label">Evidence Lines</div>
+    </div>
+    <div class="stat-card">
+        <div class="number">{{ "{:,}".format(stats.total_evidence_items) }}</div>
+        <div class="label">Evidence Items</div>
+    </div>
+</div>
+
+<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+    <!-- By Source -->
+    <div class="card">
+        <h2>By Source</h2>
+        <table class="dist-table">
+            {% set max_source = stats.by_source.values()|max if stats.by_source else 1 %}
+            {% for source, count in stats.by_source|dictsort(by='value', reverse=true) %}
+            <tr>
+                <td style="width:100px">{{ source }}</td>
+                <td class="bar-cell">
+                    <div class="bar-container">
+                        <div class="bar-fill" style="width: {{ (count / max_source * 100)|round(1) }}%"></div>
+                        <span class="bar-label">{{ "{:,}".format(count) }} ({{ (count / stats.total_packets * 100)|round(1) }}%)</span>
+                    </div>
+                </td>
+            </tr>
+            {% endfor %}
+        </table>
+    </div>
+
+    <!-- By Predicate -->
+    <div class="card">
+        <h2>By Predicate</h2>
+        <table class="dist-table">
+            {% set max_pred = stats.by_predicate.values()|max if stats.by_predicate else 1 %}
+            {% for pred, count in stats.by_predicate|dictsort(by='value', reverse=true) %}
+            <tr>
+                <td style="width:140px">{{ pred }}</td>
+                <td class="bar-cell">
+                    <div class="bar-container">
+                        <div class="bar-fill" style="width: {{ (count / max_pred * 100)|round(1) }}%"></div>
+                        <span class="bar-label">{{ "{:,}".format(count) }} ({{ (count / stats.total_packets * 100)|round(1) }}%)</span>
+                    </div>
+                </td>
+            </tr>
+            {% endfor %}
+        </table>
+    </div>
+
+    <!-- By Status -->
+    <div class="card">
+        <h2>By Curation Status</h2>
+        <table class="dist-table">
+            {% set max_status = stats.by_status.values()|max if stats.by_status else 1 %}
+            {% for status, count in stats.by_status|dictsort(by='value', reverse=true) %}
+            <tr>
+                <td style="width:140px"><span class="badge badge-status-{{ status }}">{{ status }}</span></td>
+                <td class="bar-cell">
+                    <div class="bar-container">
+                        <div class="bar-fill" style="width: {{ (count / max_status * 100)|round(1) }}%"></div>
+                        <span class="bar-label">{{ "{:,}".format(count) }}</span>
+                    </div>
+                </td>
+            </tr>
+            {% endfor %}
+        </table>
+    </div>
+
+    <!-- Score Distribution -->
+    <div class="card">
+        <h2>Score Distribution</h2>
+        {% if stats.score_distribution %}
+        <table class="dist-table">
+            {% set max_score = stats.score_distribution.values()|max if stats.score_distribution else 1 %}
+            {% for bucket, count in stats.score_distribution|dictsort(by='value', reverse=true) %}
+            <tr>
+                <td style="width:140px">{{ bucket }}</td>
+                <td class="bar-cell">
+                    <div class="bar-container">
+                        <div class="bar-fill" style="width: {{ (count / max_score * 100)|round(1) }}%"></div>
+                        <span class="bar-label">{{ "{:,}".format(count) }}</span>
+                    </div>
+                </td>
+            </tr>
+            {% endfor %}
+        </table>
+        {% else %}
+        <p class="text-muted">No score data available</p>
+        {% endif %}
+    </div>
+</div>
+
+<div class="card" style="margin-top: 1rem;">
+    <h2>Store Info</h2>
+    <div class="field-grid">
+        <span class="field-label">Store directory</span>
+        <span class="mono">{{ store_stats.store_dir }}</span>
+        <span class="field-label">Total files</span>
+        <span>{{ store_stats.total_files }} ({{ store_stats.sealed_files }} sealed)</span>
+        <span class="field-label">Total size</span>
+        <span>{{ "%.1f"|format(store_stats.total_size_mb) }} MB</span>
+    </div>
+    <a href="/packets" class="btn">Browse Packets</a>
+</div>
+{% endblock %}

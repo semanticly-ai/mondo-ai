@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+{% block title %}Packets - MondoAI{% endblock %}
+{% block content %}
+<h1>Evidence Packets <span class="text-muted" style="font-size:0.9rem; font-weight:400;">{{ "{:,}".format(total) }} results</span></h1>
+
+<form method="get" action="/packets" class="filters">
+    <input type="text" name="q" value="{{ q }}" placeholder="Search subject, object, or ID...">
+    <select name="source">
+        <option value="">All sources</option>
+        {% for s in available_sources %}
+        <option value="{{ s }}" {{ 'selected' if source == s }}>{{ s }}</option>
+        {% endfor %}
+    </select>
+    <select name="predicate">
+        <option value="">All predicates</option>
+        {% for p in available_predicates %}
+        <option value="{{ p }}" {{ 'selected' if predicate == p }}>{{ p }}</option>
+        {% endfor %}
+    </select>
+    <select name="min_evidence">
+        <option value="">Any # evidence lines</option>
+        {% for n in available_evidence_counts %}
+        <option value="{{ n }}" {{ 'selected' if min_evidence|string == n|string }}>{{ n }}+ evidence lines</option>
+        {% endfor %}
+    </select>
+    <input type="text" name="subject" value="{{ subject }}" placeholder="Filter by subject ID..." style="min-width:160px">
+    <button type="submit" class="btn">Filter</button>
+    {% if q or source or predicate or subject or min_evidence %}
+    <a href="/packets" class="btn btn-outline">Clear</a>
+    {% endif %}
+</form>
+
+<div class="card" style="padding: 0; overflow-x: auto;">
+<table>
+    <thead>
+        <tr>
+            <th>Subject</th>
+            <th>Predicate</th>
+            <th>Object</th>
+            <th>Sources</th>
+            <th>Evidence</th>
+            <th>Score</th>
+            <th>Status</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for p in packets %}
+        <tr>
+            <td>
+                <a href="/packets/{{ p.id }}">
+                    {% if p.subject_label %}{{ p.subject_label }}{% else %}{{ p.subject }}{% endif %}
+                </a>
+                <div class="text-muted" style="font-size:0.75rem; font-family: var(--mono);">{{ p.subject }}</div>
+            </td>
+            <td>{{ p.predicate }}</td>
+            <td class="truncate">
+                {% if p.object_label %}{{ p.object_label }}{% else %}{{ p.object }}{% endif %}
+            </td>
+            <td>
+                {% for s in p.sources %}
+                <span class="badge badge-source">{{ s }}</span>
+                {% endfor %}
+            </td>
+            <td style="text-align:center">{{ p.n_evidence }}</td>
+            <td style="text-align:center">
+                {% if p.score is not none %}
+                {{ "%.2f"|format(p.score) }}
+                {% else %}-{% endif %}
+            </td>
+            <td><span class="badge badge-status-{{ p.status }}">{{ p.status }}</span></td>
+        </tr>
+        {% endfor %}
+        {% if not packets %}
+        <tr><td colspan="7" style="text-align:center; padding:2rem; color:var(--text-muted);">No packets match your filters.</td></tr>
+        {% endif %}
+    </tbody>
+</table>
+</div>
+
+{% if total_pages > 1 %}
+<div class="pagination">
+    {% if page > 1 %}
+    <a href="?page={{ page - 1 }}&per_page={{ per_page }}&q={{ q }}&source={{ source }}&predicate={{ predicate }}&subject={{ subject }}&min_evidence={{ min_evidence }}">&laquo; Prev</a>
+    {% endif %}
+
+    {% set start_page = [1, page - 3]|max %}
+    {% set end_page = [total_pages, page + 3]|min %}
+
+    {% if start_page > 1 %}
+    <a href="?page=1&per_page={{ per_page }}&q={{ q }}&source={{ source }}&predicate={{ predicate }}&subject={{ subject }}&min_evidence={{ min_evidence }}">1</a>
+    {% if start_page > 2 %}<span class="info">...</span>{% endif %}
+    {% endif %}
+
+    {% for p in range(start_page, end_page + 1) %}
+    <a href="?page={{ p }}&per_page={{ per_page }}&q={{ q }}&source={{ source }}&predicate={{ predicate }}&subject={{ subject }}&min_evidence={{ min_evidence }}" {% if p == page %}class="current"{% endif %}>{{ p }}</a>
+    {% endfor %}
+
+    {% if end_page < total_pages %}
+    {% if end_page < total_pages - 1 %}<span class="info">...</span>{% endif %}
+    <a href="?page={{ total_pages }}&per_page={{ per_page }}&q={{ q }}&source={{ source }}&predicate={{ predicate }}&subject={{ subject }}&min_evidence={{ min_evidence }}">{{ total_pages }}</a>
+    {% endif %}
+
+    {% if page < total_pages %}
+    <a href="?page={{ page + 1 }}&per_page={{ per_page }}&q={{ q }}&source={{ source }}&predicate={{ predicate }}&subject={{ subject }}&min_evidence={{ min_evidence }}">Next &raquo;</a>
+    {% endif %}
+
+    <span class="info">Page {{ page }} of {{ total_pages }}</span>
+</div>
+{% endif %}
+{% endblock %}
