@@ -6,7 +6,7 @@ from OWL ontology files, including annotation provenance (ORCIDs, PMIDs).
 Example:
     >>> from mondo_ai.extraction.owl_extractor import OWLExtractor
     >>> extractor = OWLExtractor()
-    >>> snapshot = extractor.extract("path/to/ontology.owl", "doid")
+    >>> snapshot = extractor.extract("path/to/ontology.owl", "doid")  # doctest: +SKIP
 """
 
 import re

@@ -11,8 +11,8 @@ validation is performed instead.
 
 Example:
     >>> from mondo_ai.validation import validate_packet_file
-    >>> result = validate_packet_file(Path("packet.yaml"))
-    >>> print(result.summary())
+    >>> result = validate_packet_file(Path("packet.yaml"))  # doctest: +SKIP
+    >>> print(result.summary())  # doctest: +SKIP
 """
 
 from dataclasses import dataclass, field

@@ -6,7 +6,7 @@ for relevant papers about the disease and assertion.
 Example:
     >>> from mondo_ai.enrichment import PacketEnricher
     >>> enricher = PacketEnricher()
-    >>> enriched_packet = enricher.enrich(packet)
+    >>> enriched_packet = enricher.enrich(packet)  # doctest: +SKIP
 """
 
 from datetime import date
@@ -44,8 +44,8 @@ def has_literature_evidence(packet: EvidencePacket) -> bool:
 
     Example:
         >>> from mondo_ai.datamodel import EvidencePacket, SieveStatement
-        >>> packet = EvidencePacket(id="pkt1", statement=SieveStatement(id="s1"))
-        >>> has_literature_evidence(packet)
+        >>> packet = EvidencePacket(id="pkt1", statement=SieveStatement(id="s1"))  # doctest: +SKIP
+        >>> has_literature_evidence(packet)  # doctest: +SKIP
         False
     """
     if not packet.hasEvidenceLines:

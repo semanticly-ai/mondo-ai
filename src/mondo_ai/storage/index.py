@@ -6,9 +6,9 @@ loading full packet files.
 
 Example:
     >>> from mondo_ai.storage.index import PacketIndex
-    >>> index = PacketIndex("packet_index.db")
-    >>> index.build_from_directory("evidence_packets")
-    >>> results = index.query(min_score=0.8, status="UNREVIEWED")
+    >>> index = PacketIndex("packet_index.db")  # doctest: +SKIP
+    >>> index.build_from_directory("evidence_packets")  # doctest: +SKIP
+    >>> results = index.query(min_score=0.8, status="UNREVIEWED")  # doctest: +SKIP
 """
 
 import sqlite3

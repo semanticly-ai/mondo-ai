@@ -5,9 +5,9 @@ recommendations for ontology curation.
 
 Example:
     >>> from mondo_ai.agents import SynthesisAgent
-    >>> agent = SynthesisAgent()
-    >>> synthesis = await agent.synthesize(packet)
-    >>> print(synthesis.direction, synthesis.summary)
+    >>> agent = SynthesisAgent()  # doctest: +SKIP
+    >>> synthesis = await agent.synthesize(packet)  # doctest: +SKIP
+    >>> print(synthesis.direction, synthesis.summary)  # doctest: +SKIP
 """
 
 import os

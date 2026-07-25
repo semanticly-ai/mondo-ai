@@ -19,9 +19,9 @@ Storage Structure:
 
 Example:
     >>> from mondo_ai.storage.jsonl_store import JSONLPacketStore
-    >>> store = JSONLPacketStore("packet_store/")
-    >>> store.add_packet(packet)
-    >>> retrieved = store.get_packet("pkt_abc123")
+    >>> store = JSONLPacketStore("packet_store/")  # doctest: +SKIP
+    >>> store.add_packet(packet)  # doctest: +SKIP
+    >>> retrieved = store.get_packet("pkt_abc123")  # doctest: +SKIP
 """
 
 from __future__ import annotations
@@ -178,10 +178,10 @@ class JSONLPacketStore:
     - Fast lookups via an index mapping packet IDs to file locations
 
     Example:
-        >>> store = JSONLPacketStore("packet_store/", max_file_size=50*1024*1024)
-        >>> store.add_packet(packet)
-        >>> packet = store.get_packet("pkt_abc123")
-        >>> for packet in store.iter_packets():
+        >>> store = JSONLPacketStore("packet_store/", max_file_size=50*1024*1024)  # doctest: +SKIP
+        >>> store.add_packet(packet)  # doctest: +SKIP
+        >>> packet = store.get_packet("pkt_abc123")  # doctest: +SKIP
+        >>> for packet in store.iter_packets():  # doctest: +SKIP
         ...     print(packet.id)
     """
 

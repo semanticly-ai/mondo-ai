@@ -6,9 +6,9 @@ as a markdown dashboard.
 Example:
     >>> from mondo_ai.stats import compute_stats
     >>> from mondo_ai.storage.jsonl_store import JSONLPacketStore
-    >>> store = JSONLPacketStore("packet_store/")
-    >>> stats = compute_stats(store.iter_packets())
-    >>> print(stats.to_markdown())
+    >>> store = JSONLPacketStore("packet_store/")  # doctest: +SKIP
+    >>> stats = compute_stats(store.iter_packets())  # doctest: +SKIP
+    >>> print(stats.to_markdown())  # doctest: +SKIP
 """
 
 from __future__ import annotations

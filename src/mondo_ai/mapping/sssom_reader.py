@@ -5,9 +5,9 @@ files and provides lookup functionality for translating between ontologies.
 
 Example:
     >>> from mondo_ai.mapping.sssom_reader import SSSOMReader
-    >>> reader = SSSOMReader("mondo.sssom.tsv")
-    >>> mondo_id = reader.get_mondo_id("DOID:4")
-    >>> print(mondo_id)
+    >>> reader = SSSOMReader("mondo.sssom.tsv")  # doctest: +SKIP
+    >>> mondo_id = reader.get_mondo_id("DOID:4")  # doctest: +SKIP
+    >>> print(mondo_id)  # doctest: +SKIP
     'MONDO:0000001'
 """
 

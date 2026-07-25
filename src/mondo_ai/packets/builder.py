@@ -22,7 +22,7 @@ ID Generation Contract:
 Example:
     >>> from mondo_ai.packets.builder import PacketBuilder
     >>> builder = PacketBuilder()
-    >>> packet = builder.build_packet(statement, source_id, source_name, weight=0.85)
+    >>> packet = builder.build_packet(statement, source_id, source_name, weight=0.85)  # doctest: +SKIP
 """
 
 from __future__ import annotations

@@ -3,8 +3,13 @@
 This module orchestrates the full pipeline for generating SIEVE evidence packets.
 
 Example:
-    >>> from mondo_ai.pipeline import run_pipeline
-    >>> packets = run_pipeline(config)
+    >>> from mondo_ai.pipeline import PipelineRunner
+    >>> runner = PipelineRunner(  # doctest: +SKIP
+    ...     sssom_path="mondo.sssom.tsv",
+    ...     omim_owl_path="omim.owl",
+    ...     doid_owl_path="doid.owl",
+    ... )
+    >>> packets = runner.run()  # doctest: +SKIP
 """
 
 from datetime import date

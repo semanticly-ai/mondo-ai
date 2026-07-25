@@ -6,8 +6,8 @@ and creates LiteratureEvidence items for evidence packets.
 Example:
     >>> from mondo_ai.enrichment.pubmed import PubMedClient
     >>> client = PubMedClient()
-    >>> papers = client.search("asthma synonym", max_results=5)
-    >>> for paper in papers:
+    >>> papers = client.search("asthma synonym", max_results=5)  # doctest: +SKIP
+    >>> for paper in papers:  # doctest: +SKIP
     ...     print(paper.title)
 """
 

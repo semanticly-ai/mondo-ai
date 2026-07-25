@@ -16,7 +16,7 @@ NER ranges from -1 (all disputing) to +1 (all supporting).
 Example:
     >>> from mondo_ai.scoring.scorer import Scorer
     >>> scorer = Scorer()
-    >>> score = scorer.calculate_ner(packet)
+    >>> score = scorer.calculate_ner(packet)  # doctest: +SKIP
 """
 
 from mondo_ai.datamodel import (

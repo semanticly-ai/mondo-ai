@@ -8,7 +8,7 @@ This module extracts entities from Mondo with rich provenance:
 Example:
     >>> from mondo_ai.extraction.mondo_extractor import MondoExtractor
     >>> extractor = MondoExtractor()
-    >>> snapshot = extractor.extract("path/to/mondo.owl")
+    >>> snapshot = extractor.extract("path/to/mondo.owl")  # doctest: +SKIP
 """
 
 import re

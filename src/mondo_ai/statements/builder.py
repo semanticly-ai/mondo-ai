@@ -5,8 +5,8 @@ SIEVE statements using SSSOM mappings.
 
 Example:
     >>> from mondo_ai.statements.builder import StatementBuilder
-    >>> builder = StatementBuilder(sssom_reader)
-    >>> statements = builder.build_synonym_statements(entity_snapshot, "doid")
+    >>> builder = StatementBuilder(sssom_reader)  # doctest: +SKIP
+    >>> statements = builder.build_synonym_statements(entity_snapshot, "doid")  # doctest: +SKIP
 """
 
 from dataclasses import dataclass
@@ -39,7 +39,7 @@ def _compute_statement_id(subject: str, predicate: str, obj: str) -> str:
     """Compute deterministic statement ID from triple.
 
     >>> _compute_statement_id("MONDO:0000001", "EXACT_SYNONYM", "disease")
-    'stmt_6f4b3c...'
+    'stmt_750ae5c987ae'
     """
     content = f"{subject}|{predicate}|{obj}"
     hash_val = sha256(content.encode()).hexdigest()[:12]

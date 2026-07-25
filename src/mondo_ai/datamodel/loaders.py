@@ -84,7 +84,7 @@ def load_packet(path: Path | str) -> EvidencePacket:
 
     Example:
         >>> from mondo_ai.datamodel.loaders import load_packet
-        >>> packet = load_packet("evidence_packets/pkt_abc123.yaml")
+        >>> packet = load_packet("evidence_packets/pkt_abc123.yaml")  # doctest: +SKIP
     """
     with open(path) as f:
         data = yaml.safe_load(f)
