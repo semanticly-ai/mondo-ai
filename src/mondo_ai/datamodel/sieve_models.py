@@ -1,14 +1,20 @@
 from __future__ import annotations
 
+import re
+import sys
 from datetime import (
     date,
     datetime,
+    time
 )
+from decimal import Decimal
 from enum import Enum
 from typing import (
     Any,
     ClassVar,
+    Literal,
     Optional,
+    Union
 )
 
 from pydantic import (
@@ -18,6 +24,7 @@ from pydantic import (
     RootModel,
     SerializationInfo,
     SerializerFunctionWrapHandler,
+    field_validator,
     model_serializer
 )
 
@@ -77,7 +84,7 @@ linkml_meta = LinkMLMeta({'default_prefix': 'mondoai',
                     'curating content into the Mondo disease ontology. Based on '
                     'SIEVE/SEPIO evidence framework.',
      'id': 'https://w3id.org/monarch-initiative/mondo-ai',
-     'imports': ['linkml:types', 'sieve_sepio'],
+     'imports': ['linkml:types', 'sieve'],
      'name': 'mondo_ai_sieve',
      'prefixes': {'DOID': {'prefix_prefix': 'DOID',
                            'prefix_reference': 'http://purl.obolibrary.org/obo/DOID_'},
@@ -127,6 +134,24 @@ class CurationStatus(str, Enum):
     CONTROVERSIAL = "CONTROVERSIAL"
     """
     Conflicting evidence, needs discussion.
+    """
+
+
+class DecisionType(str, Enum):
+    """
+    A curator's decision on an assertion.
+    """
+    ACCEPT = "ACCEPT"
+    """
+    Accept the assertion.
+    """
+    REJECT = "REJECT"
+    """
+    Reject the assertion.
+    """
+    CONTROVERSIAL = "CONTROVERSIAL"
+    """
+    Mark as controversial for further discussion.
     """
 
 
@@ -347,11 +372,15 @@ class Entity(ConfiguredBaseModel):
     """
     linkml_meta: ClassVar[LinkMLMeta] = LinkMLMeta({'from_schema': 'https://w3id.org/sepio-model', 'status': 'Draft'})
 
-    id: str = Field(default=..., description="""The logical identifier of the entity in the system of record, e.g. a UUID.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity', 'EvidencePacket', 'EntitySnapshot'], 'status': 'Draft'} })
+    id: str = Field(default=..., description="""The logical identifier of the entity in the system of record, e.g. a UUID.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity',
+                       'EvidencePacket',
+                       'CurationDecision',
+                       'EntitySnapshot'],
+         'status': 'Draft'} })
     identifiers: Optional[list[str]] = Field(default=[], description="""Globally-unique business identifiers or accession numbers for the entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity'], 'status': 'Informative'} })
     type: str = Field(default=..., description="""The name of the class that is instantiated by a data object representing the Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity', 'Synonym'], 'status': 'Draft'} })
     label: Optional[str] = Field(default=None, description="""A primary name for the Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity', 'Coding', 'EntitySnapshot'], 'status': 'Draft'} })
-    alternativeLabels: Optional[list[str]] = Field(default=[], description="""Alternative name(s) for the Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity'], 'status': 'Draft'} })
+    alternative_labels: Optional[list[str]] = Field(default=[], description="""Alternative name(s) for the Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity'], 'status': 'Draft'} })
     description: Optional[str] = Field(default=None, description="""A free text description of the Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity', 'Score'], 'status': 'Draft'} })
     extensions: Optional[list[Extension]] = Field(default=[], description="""A list of extensions to the Entity, that allow for capture of information not directly supported by elements defined in the model.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity'], 'status': 'Draft'} })
 
@@ -362,19 +391,23 @@ class InformationEntity(Entity):
     """
     linkml_meta: ClassVar[LinkMLMeta] = LinkMLMeta({'from_schema': 'https://w3id.org/sepio-model', 'status': 'Draft'})
 
-    isAbout: Optional[list[str]] = Field(default=[], description="""An entity or concept that the information entity describes/is about.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Informative'} })
+    is_about: Optional[list[str]] = Field(default=[], description="""An entity or concept that the information entity describes/is about.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Informative'} })
     contributions: Optional[list[Contribution]] = Field(default=[], description="""Specific actions taken by an Agent toward the creation, modification, validation, or deprecation of an Information Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity', 'RecordMetadata'], 'status': 'Draft'} })
-    dateAuthored: Optional[str] = Field(default=None, description="""When the information content was generated.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
-    specifiedBy: Optional[list[str]] = Field(default=[], description="""A specification that describes all or part of the process that led to creation of the Information Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
-    derivedFrom: Optional[list[InformationEntity]] = Field(default=[], description="""Another Information Entity from which this one is derived.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
-    reportedIn: Optional[list[str]] = Field(default=[], description="""A document in which the Information Entity is reported.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
+    date_authored: Optional[str] = Field(default=None, description="""When the information content was generated.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
+    specified_by: Optional[list[str]] = Field(default=[], description="""A specification that describes all or part of the process that led to creation of the Information Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
+    derived_from: Optional[list[InformationEntity]] = Field(default=[], description="""Another Information Entity from which this one is derived.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
+    reported_in: Optional[list[str]] = Field(default=[], description="""A document in which the Information Entity is reported.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
     sources: Optional[list[str]] = Field(default=[], description="""A document or other information resource in which the information entity, or evidence supporting it, is reported.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
-    recordMetadata: Optional[RecordMetadata] = Field(default=None, description="""Provenance metadata about a specific concrete record of information.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
-    id: str = Field(default=..., description="""The logical identifier of the entity in the system of record, e.g. a UUID.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity', 'EvidencePacket', 'EntitySnapshot'], 'status': 'Draft'} })
+    record_metadata: Optional[RecordMetadata] = Field(default=None, description="""Provenance metadata about a specific concrete record of information.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
+    id: str = Field(default=..., description="""The logical identifier of the entity in the system of record, e.g. a UUID.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity',
+                       'EvidencePacket',
+                       'CurationDecision',
+                       'EntitySnapshot'],
+         'status': 'Draft'} })
     identifiers: Optional[list[str]] = Field(default=[], description="""Globally-unique business identifiers or accession numbers for the entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity'], 'status': 'Informative'} })
     type: str = Field(default=..., description="""The name of the class that is instantiated by a data object representing the Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity', 'Synonym'], 'status': 'Draft'} })
     label: Optional[str] = Field(default=None, description="""A primary name for the Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity', 'Coding', 'EntitySnapshot'], 'status': 'Draft'} })
-    alternativeLabels: Optional[list[str]] = Field(default=[], description="""Alternative name(s) for the Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity'], 'status': 'Draft'} })
+    alternative_labels: Optional[list[str]] = Field(default=[], description="""Alternative name(s) for the Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity'], 'status': 'Draft'} })
     description: Optional[str] = Field(default=None, description="""A free text description of the Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity', 'Score'], 'status': 'Draft'} })
     extensions: Optional[list[Extension]] = Field(default=[], description="""A list of extensions to the Entity, that allow for capture of information not directly supported by elements defined in the model.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity'], 'status': 'Draft'} })
 
@@ -385,7 +418,7 @@ class Statement(InformationEntity):
     """
     linkml_meta: ClassVar[LinkMLMeta] = LinkMLMeta({'from_schema': 'https://w3id.org/sepio-model', 'status': 'Draft'})
 
-    statementText: Optional[str] = Field(default=None, description="""A natural-language expression of what a Statement asserts to be true.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Statement'], 'status': 'Draft'} })
+    statement_text: Optional[str] = Field(default=None, description="""A natural-language expression of what a Statement asserts to be true.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Statement'], 'status': 'Draft'} })
     proposition: Optional[Proposition] = Field(default=None, description="""A possible fact that the Statement assesses or puts forth as true.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Statement'], 'status': 'Informative'} })
     subject: Optional[str] = Field(default=None, description="""The Entity or concept about which the Statement is made.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Statement', 'Proposition'], 'status': 'Draft'} })
     predicate: Optional[Coding] = Field(default=None, description="""The relationship declared to hold between the subject and the object of the Statement.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Statement', 'Proposition'], 'status': 'Draft'} })
@@ -394,21 +427,25 @@ class Statement(InformationEntity):
     direction: Optional[str] = Field(default=None, description="""Whether the Statement supports, disputes, or is neutral w.r.t. the validity of its Proposition.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Statement', 'EvidenceSynthesis'], 'status': 'Draft'} })
     strength: Optional[str] = Field(default=None, description="""The strength of a Proposition's assessment in the direction indicated.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Statement'], 'status': 'Draft'} })
     score: Optional[float] = Field(default=None, description="""A quantitative score indicating the strength of a Proposition's validity assessment.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Statement', 'EvidenceSynthesis'], 'status': 'Draft'} })
-    hasEvidenceLines: Optional[list[EvidenceLine]] = Field(default=[], description="""Evidence-based arguments that support or dispute the validity of the Statement's proposition.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Statement', 'EvidencePacket'], 'status': 'Draft'} })
-    hasEvidence: Optional[list[InformationEntity]] = Field(default=[], description="""A piece of information that contributes to an argument for or against the Statement's proposition. Shortcut bypassing EvidenceLine.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Statement'], 'status': 'Informative'} })
-    isAbout: Optional[list[str]] = Field(default=[], description="""An entity or concept that the information entity describes/is about.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Informative'} })
+    has_evidence_lines: Optional[list[EvidenceLine]] = Field(default=[], description="""Evidence-based arguments that support or dispute the validity of the Statement's proposition.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Statement', 'EvidencePacket'], 'status': 'Draft'} })
+    has_evidence: Optional[list[InformationEntity]] = Field(default=[], description="""A piece of information that contributes to an argument for or against the Statement's proposition. Shortcut bypassing EvidenceLine.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Statement'], 'status': 'Informative'} })
+    is_about: Optional[list[str]] = Field(default=[], description="""An entity or concept that the information entity describes/is about.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Informative'} })
     contributions: Optional[list[Contribution]] = Field(default=[], description="""Specific actions taken by an Agent toward the creation, modification, validation, or deprecation of an Information Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity', 'RecordMetadata'], 'status': 'Draft'} })
-    dateAuthored: Optional[str] = Field(default=None, description="""When the information content was generated.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
-    specifiedBy: Optional[list[str]] = Field(default=[], description="""A specification that describes all or part of the process that led to creation of the Information Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
-    derivedFrom: Optional[list[InformationEntity]] = Field(default=[], description="""Another Information Entity from which this one is derived.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
-    reportedIn: Optional[list[str]] = Field(default=[], description="""A document in which the Information Entity is reported.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
+    date_authored: Optional[str] = Field(default=None, description="""When the information content was generated.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
+    specified_by: Optional[list[str]] = Field(default=[], description="""A specification that describes all or part of the process that led to creation of the Information Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
+    derived_from: Optional[list[InformationEntity]] = Field(default=[], description="""Another Information Entity from which this one is derived.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
+    reported_in: Optional[list[str]] = Field(default=[], description="""A document in which the Information Entity is reported.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
     sources: Optional[list[str]] = Field(default=[], description="""A document or other information resource in which the information entity, or evidence supporting it, is reported.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
-    recordMetadata: Optional[RecordMetadata] = Field(default=None, description="""Provenance metadata about a specific concrete record of information.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
-    id: str = Field(default=..., description="""The logical identifier of the entity in the system of record, e.g. a UUID.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity', 'EvidencePacket', 'EntitySnapshot'], 'status': 'Draft'} })
+    record_metadata: Optional[RecordMetadata] = Field(default=None, description="""Provenance metadata about a specific concrete record of information.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
+    id: str = Field(default=..., description="""The logical identifier of the entity in the system of record, e.g. a UUID.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity',
+                       'EvidencePacket',
+                       'CurationDecision',
+                       'EntitySnapshot'],
+         'status': 'Draft'} })
     identifiers: Optional[list[str]] = Field(default=[], description="""Globally-unique business identifiers or accession numbers for the entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity'], 'status': 'Informative'} })
     type: str = Field(default=..., description="""The name of the class that is instantiated by a data object representing the Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity', 'Synonym'], 'status': 'Draft'} })
     label: Optional[str] = Field(default=None, description="""A primary name for the Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity', 'Coding', 'EntitySnapshot'], 'status': 'Draft'} })
-    alternativeLabels: Optional[list[str]] = Field(default=[], description="""Alternative name(s) for the Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity'], 'status': 'Draft'} })
+    alternative_labels: Optional[list[str]] = Field(default=[], description="""Alternative name(s) for the Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity'], 'status': 'Draft'} })
     description: Optional[str] = Field(default=None, description="""A free text description of the Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity', 'Score'], 'status': 'Draft'} })
     extensions: Optional[list[Extension]] = Field(default=[], description="""A list of extensions to the Entity, that allow for capture of information not directly supported by elements defined in the model.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity'], 'status': 'Draft'} })
 
@@ -419,23 +456,27 @@ class EvidenceLine(InformationEntity):
     """
     linkml_meta: ClassVar[LinkMLMeta] = LinkMLMeta({'from_schema': 'https://w3id.org/sepio-model', 'status': 'Draft'})
 
-    hasEvidenceItems: Optional[list[InformationEntity]] = Field(default=[], description="""Individual pieces of information evaluated as evidence in building this argument.""", json_schema_extra = { "linkml_meta": {'domain_of': ['EvidenceLine'], 'status': 'Draft'} })
-    directionOfEvidenceProvided: Optional[str] = Field(default=None, description="""The direction of support toward its target Proposition (supports, disputes, neutral).""", json_schema_extra = { "linkml_meta": {'domain_of': ['EvidenceLine'], 'status': 'Draft'} })
-    strengthOfEvidenceProvided: Optional[str] = Field(default=None, description="""The qualitative strength of support for or against its target Proposition.""", json_schema_extra = { "linkml_meta": {'domain_of': ['EvidenceLine'], 'status': 'Draft'} })
-    scoreOfEvidenceProvided: Optional[float] = Field(default=None, description="""A quantitative score indicating the strength of support.""", json_schema_extra = { "linkml_meta": {'domain_of': ['EvidenceLine'], 'status': 'Draft'} })
-    isAbout: Optional[list[str]] = Field(default=[], description="""An entity or concept that the information entity describes/is about.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Informative'} })
+    has_evidence_items: Optional[list[InformationEntity]] = Field(default=[], description="""Individual pieces of information evaluated as evidence in building this argument.""", json_schema_extra = { "linkml_meta": {'domain_of': ['EvidenceLine'], 'status': 'Draft'} })
+    direction_of_evidence_provided: Optional[str] = Field(default=None, description="""The direction of support toward its target Proposition (supports, disputes, neutral).""", json_schema_extra = { "linkml_meta": {'domain_of': ['EvidenceLine'], 'status': 'Draft'} })
+    strength_of_evidence_provided: Optional[str] = Field(default=None, description="""The qualitative strength of support for or against its target Proposition.""", json_schema_extra = { "linkml_meta": {'domain_of': ['EvidenceLine'], 'status': 'Draft'} })
+    score_of_evidence_provided: Optional[float] = Field(default=None, description="""A quantitative score indicating the strength of support.""", json_schema_extra = { "linkml_meta": {'domain_of': ['EvidenceLine'], 'status': 'Draft'} })
+    is_about: Optional[list[str]] = Field(default=[], description="""An entity or concept that the information entity describes/is about.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Informative'} })
     contributions: Optional[list[Contribution]] = Field(default=[], description="""Specific actions taken by an Agent toward the creation, modification, validation, or deprecation of an Information Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity', 'RecordMetadata'], 'status': 'Draft'} })
-    dateAuthored: Optional[str] = Field(default=None, description="""When the information content was generated.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
-    specifiedBy: Optional[list[str]] = Field(default=[], description="""A specification that describes all or part of the process that led to creation of the Information Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
-    derivedFrom: Optional[list[InformationEntity]] = Field(default=[], description="""Another Information Entity from which this one is derived.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
-    reportedIn: Optional[list[str]] = Field(default=[], description="""A document in which the Information Entity is reported.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
+    date_authored: Optional[str] = Field(default=None, description="""When the information content was generated.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
+    specified_by: Optional[list[str]] = Field(default=[], description="""A specification that describes all or part of the process that led to creation of the Information Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
+    derived_from: Optional[list[InformationEntity]] = Field(default=[], description="""Another Information Entity from which this one is derived.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
+    reported_in: Optional[list[str]] = Field(default=[], description="""A document in which the Information Entity is reported.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
     sources: Optional[list[str]] = Field(default=[], description="""A document or other information resource in which the information entity, or evidence supporting it, is reported.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
-    recordMetadata: Optional[RecordMetadata] = Field(default=None, description="""Provenance metadata about a specific concrete record of information.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
-    id: str = Field(default=..., description="""The logical identifier of the entity in the system of record, e.g. a UUID.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity', 'EvidencePacket', 'EntitySnapshot'], 'status': 'Draft'} })
+    record_metadata: Optional[RecordMetadata] = Field(default=None, description="""Provenance metadata about a specific concrete record of information.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
+    id: str = Field(default=..., description="""The logical identifier of the entity in the system of record, e.g. a UUID.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity',
+                       'EvidencePacket',
+                       'CurationDecision',
+                       'EntitySnapshot'],
+         'status': 'Draft'} })
     identifiers: Optional[list[str]] = Field(default=[], description="""Globally-unique business identifiers or accession numbers for the entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity'], 'status': 'Informative'} })
     type: str = Field(default=..., description="""The name of the class that is instantiated by a data object representing the Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity', 'Synonym'], 'status': 'Draft'} })
     label: Optional[str] = Field(default=None, description="""A primary name for the Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity', 'Coding', 'EntitySnapshot'], 'status': 'Draft'} })
-    alternativeLabels: Optional[list[str]] = Field(default=[], description="""Alternative name(s) for the Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity'], 'status': 'Draft'} })
+    alternative_labels: Optional[list[str]] = Field(default=[], description="""Alternative name(s) for the Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity'], 'status': 'Draft'} })
     description: Optional[str] = Field(default=None, description="""A free text description of the Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity', 'Score'], 'status': 'Draft'} })
     extensions: Optional[list[Extension]] = Field(default=[], description="""A list of extensions to the Entity, that allow for capture of information not directly supported by elements defined in the model.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity'], 'status': 'Draft'} })
 
@@ -452,19 +493,23 @@ class Document(InformationEntity):
     urls: Optional[list[str]] = Field(default=[], description="""URLs from which the Document content can be retrieved.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Document'], 'status': 'Draft'} })
     pmid: Optional[str] = Field(default=None, description="""A PubMed unique identifier for the document.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Document'], 'status': 'Draft'} })
     doi: Optional[str] = Field(default=None, description="""A Digital Object Identifier for the document.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Document'], 'status': 'Draft'} })
-    isAbout: Optional[list[str]] = Field(default=[], description="""An entity or concept that the information entity describes/is about.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Informative'} })
+    is_about: Optional[list[str]] = Field(default=[], description="""An entity or concept that the information entity describes/is about.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Informative'} })
     contributions: Optional[list[Contribution]] = Field(default=[], description="""Specific actions taken by an Agent toward the creation, modification, validation, or deprecation of an Information Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity', 'RecordMetadata'], 'status': 'Draft'} })
-    dateAuthored: Optional[str] = Field(default=None, description="""When the information content was generated.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
-    specifiedBy: Optional[list[str]] = Field(default=[], description="""A specification that describes all or part of the process that led to creation of the Information Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
-    derivedFrom: Optional[list[InformationEntity]] = Field(default=[], description="""Another Information Entity from which this one is derived.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
-    reportedIn: Optional[list[str]] = Field(default=[], description="""A document in which the Information Entity is reported.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
+    date_authored: Optional[str] = Field(default=None, description="""When the information content was generated.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
+    specified_by: Optional[list[str]] = Field(default=[], description="""A specification that describes all or part of the process that led to creation of the Information Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
+    derived_from: Optional[list[InformationEntity]] = Field(default=[], description="""Another Information Entity from which this one is derived.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
+    reported_in: Optional[list[str]] = Field(default=[], description="""A document in which the Information Entity is reported.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
     sources: Optional[list[str]] = Field(default=[], description="""A document or other information resource in which the information entity, or evidence supporting it, is reported.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
-    recordMetadata: Optional[RecordMetadata] = Field(default=None, description="""Provenance metadata about a specific concrete record of information.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
-    id: str = Field(default=..., description="""The logical identifier of the entity in the system of record, e.g. a UUID.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity', 'EvidencePacket', 'EntitySnapshot'], 'status': 'Draft'} })
+    record_metadata: Optional[RecordMetadata] = Field(default=None, description="""Provenance metadata about a specific concrete record of information.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
+    id: str = Field(default=..., description="""The logical identifier of the entity in the system of record, e.g. a UUID.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity',
+                       'EvidencePacket',
+                       'CurationDecision',
+                       'EntitySnapshot'],
+         'status': 'Draft'} })
     identifiers: Optional[list[str]] = Field(default=[], description="""Globally-unique business identifiers or accession numbers for the entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity'], 'status': 'Informative'} })
     type: str = Field(default=..., description="""The name of the class that is instantiated by a data object representing the Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity', 'Synonym'], 'status': 'Draft'} })
     label: Optional[str] = Field(default=None, description="""A primary name for the Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity', 'Coding', 'EntitySnapshot'], 'status': 'Draft'} })
-    alternativeLabels: Optional[list[str]] = Field(default=[], description="""Alternative name(s) for the Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity'], 'status': 'Draft'} })
+    alternative_labels: Optional[list[str]] = Field(default=[], description="""Alternative name(s) for the Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity'], 'status': 'Draft'} })
     description: Optional[str] = Field(default=None, description="""A free text description of the Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity', 'Score'], 'status': 'Draft'} })
     extensions: Optional[list[Extension]] = Field(default=[], description="""A list of extensions to the Entity, that allow for capture of information not directly supported by elements defined in the model.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity'], 'status': 'Draft'} })
 
@@ -485,19 +530,23 @@ class DataItem(InformationEntity):
                        'Synonym'],
          'status': 'Informative'} })
     unit: Optional[Coding] = Field(default=None, description="""A unit of measure for the value.""", json_schema_extra = { "linkml_meta": {'domain_of': ['DataItem'], 'status': 'Informative'} })
-    isAbout: Optional[list[str]] = Field(default=[], description="""An entity or concept that the information entity describes/is about.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Informative'} })
+    is_about: Optional[list[str]] = Field(default=[], description="""An entity or concept that the information entity describes/is about.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Informative'} })
     contributions: Optional[list[Contribution]] = Field(default=[], description="""Specific actions taken by an Agent toward the creation, modification, validation, or deprecation of an Information Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity', 'RecordMetadata'], 'status': 'Draft'} })
-    dateAuthored: Optional[str] = Field(default=None, description="""When the information content was generated.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
-    specifiedBy: Optional[list[str]] = Field(default=[], description="""A specification that describes all or part of the process that led to creation of the Information Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
-    derivedFrom: Optional[list[InformationEntity]] = Field(default=[], description="""Another Information Entity from which this one is derived.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
-    reportedIn: Optional[list[str]] = Field(default=[], description="""A document in which the Information Entity is reported.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
+    date_authored: Optional[str] = Field(default=None, description="""When the information content was generated.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
+    specified_by: Optional[list[str]] = Field(default=[], description="""A specification that describes all or part of the process that led to creation of the Information Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
+    derived_from: Optional[list[InformationEntity]] = Field(default=[], description="""Another Information Entity from which this one is derived.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
+    reported_in: Optional[list[str]] = Field(default=[], description="""A document in which the Information Entity is reported.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
     sources: Optional[list[str]] = Field(default=[], description="""A document or other information resource in which the information entity, or evidence supporting it, is reported.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
-    recordMetadata: Optional[RecordMetadata] = Field(default=None, description="""Provenance metadata about a specific concrete record of information.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
-    id: str = Field(default=..., description="""The logical identifier of the entity in the system of record, e.g. a UUID.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity', 'EvidencePacket', 'EntitySnapshot'], 'status': 'Draft'} })
+    record_metadata: Optional[RecordMetadata] = Field(default=None, description="""Provenance metadata about a specific concrete record of information.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
+    id: str = Field(default=..., description="""The logical identifier of the entity in the system of record, e.g. a UUID.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity',
+                       'EvidencePacket',
+                       'CurationDecision',
+                       'EntitySnapshot'],
+         'status': 'Draft'} })
     identifiers: Optional[list[str]] = Field(default=[], description="""Globally-unique business identifiers or accession numbers for the entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity'], 'status': 'Informative'} })
     type: str = Field(default=..., description="""The name of the class that is instantiated by a data object representing the Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity', 'Synonym'], 'status': 'Draft'} })
     label: Optional[str] = Field(default=None, description="""A primary name for the Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity', 'Coding', 'EntitySnapshot'], 'status': 'Draft'} })
-    alternativeLabels: Optional[list[str]] = Field(default=[], description="""Alternative name(s) for the Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity'], 'status': 'Draft'} })
+    alternative_labels: Optional[list[str]] = Field(default=[], description="""Alternative name(s) for the Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity'], 'status': 'Draft'} })
     description: Optional[str] = Field(default=None, description="""A free text description of the Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity', 'Score'], 'status': 'Draft'} })
     extensions: Optional[list[Extension]] = Field(default=[], description="""A list of extensions to the Entity, that allow for capture of information not directly supported by elements defined in the model.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity'], 'status': 'Draft'} })
 
@@ -509,21 +558,25 @@ class StudyResult(InformationEntity):
     linkml_meta: ClassVar[LinkMLMeta] = LinkMLMeta({'from_schema': 'https://w3id.org/sepio-model', 'status': 'Draft'})
 
     focus: Optional[str] = Field(default=None, description="""A specific subject or experimental unit the data is about.""", json_schema_extra = { "linkml_meta": {'domain_of': ['StudyResult']} })
-    dataItems: Optional[list[DataItem]] = Field(default=[], description="""Data items included in the StudyResult.""", json_schema_extra = { "linkml_meta": {'domain_of': ['StudyResult'], 'status': 'Informative'} })
-    sourceDataSet: Optional[list[DataSet]] = Field(default=[], description="""A larger DataSet from which this content was derived.""", json_schema_extra = { "linkml_meta": {'domain_of': ['StudyResult'], 'status': 'Draft'} })
-    isAbout: Optional[list[str]] = Field(default=[], description="""An entity or concept that the information entity describes/is about.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Informative'} })
+    data_items: Optional[list[DataItem]] = Field(default=[], description="""Data items included in the StudyResult.""", json_schema_extra = { "linkml_meta": {'domain_of': ['StudyResult'], 'status': 'Informative'} })
+    source_data_set: Optional[list[DataSet]] = Field(default=[], description="""A larger DataSet from which this content was derived.""", json_schema_extra = { "linkml_meta": {'domain_of': ['StudyResult'], 'status': 'Draft'} })
+    is_about: Optional[list[str]] = Field(default=[], description="""An entity or concept that the information entity describes/is about.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Informative'} })
     contributions: Optional[list[Contribution]] = Field(default=[], description="""Specific actions taken by an Agent toward the creation, modification, validation, or deprecation of an Information Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity', 'RecordMetadata'], 'status': 'Draft'} })
-    dateAuthored: Optional[str] = Field(default=None, description="""When the information content was generated.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
-    specifiedBy: Optional[list[str]] = Field(default=[], description="""A specification that describes all or part of the process that led to creation of the Information Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
-    derivedFrom: Optional[list[InformationEntity]] = Field(default=[], description="""Another Information Entity from which this one is derived.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
-    reportedIn: Optional[list[str]] = Field(default=[], description="""A document in which the Information Entity is reported.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
+    date_authored: Optional[str] = Field(default=None, description="""When the information content was generated.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
+    specified_by: Optional[list[str]] = Field(default=[], description="""A specification that describes all or part of the process that led to creation of the Information Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
+    derived_from: Optional[list[InformationEntity]] = Field(default=[], description="""Another Information Entity from which this one is derived.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
+    reported_in: Optional[list[str]] = Field(default=[], description="""A document in which the Information Entity is reported.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
     sources: Optional[list[str]] = Field(default=[], description="""A document or other information resource in which the information entity, or evidence supporting it, is reported.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
-    recordMetadata: Optional[RecordMetadata] = Field(default=None, description="""Provenance metadata about a specific concrete record of information.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
-    id: str = Field(default=..., description="""The logical identifier of the entity in the system of record, e.g. a UUID.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity', 'EvidencePacket', 'EntitySnapshot'], 'status': 'Draft'} })
+    record_metadata: Optional[RecordMetadata] = Field(default=None, description="""Provenance metadata about a specific concrete record of information.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
+    id: str = Field(default=..., description="""The logical identifier of the entity in the system of record, e.g. a UUID.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity',
+                       'EvidencePacket',
+                       'CurationDecision',
+                       'EntitySnapshot'],
+         'status': 'Draft'} })
     identifiers: Optional[list[str]] = Field(default=[], description="""Globally-unique business identifiers or accession numbers for the entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity'], 'status': 'Informative'} })
     type: str = Field(default=..., description="""The name of the class that is instantiated by a data object representing the Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity', 'Synonym'], 'status': 'Draft'} })
     label: Optional[str] = Field(default=None, description="""A primary name for the Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity', 'Coding', 'EntitySnapshot'], 'status': 'Draft'} })
-    alternativeLabels: Optional[list[str]] = Field(default=[], description="""Alternative name(s) for the Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity'], 'status': 'Draft'} })
+    alternative_labels: Optional[list[str]] = Field(default=[], description="""Alternative name(s) for the Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity'], 'status': 'Draft'} })
     description: Optional[str] = Field(default=None, description="""A free text description of the Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity', 'Score'], 'status': 'Draft'} })
     extensions: Optional[list[Extension]] = Field(default=[], description="""A list of extensions to the Entity, that allow for capture of information not directly supported by elements defined in the model.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity'], 'status': 'Draft'} })
 
@@ -537,19 +590,23 @@ class DataSet(InformationEntity):
     subtype: Optional[Coding] = Field(default=None, description="""A specific type of data set.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Document', 'DataItem', 'DataSet', 'Activity', 'Agent'],
          'status': 'Informative'} })
     version: Optional[str] = Field(default=None, description="""The version of the DataSet.""", json_schema_extra = { "linkml_meta": {'domain_of': ['DataSet', 'ResourceSnapshot'], 'status': 'Informative'} })
-    isAbout: Optional[list[str]] = Field(default=[], description="""An entity or concept that the information entity describes/is about.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Informative'} })
+    is_about: Optional[list[str]] = Field(default=[], description="""An entity or concept that the information entity describes/is about.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Informative'} })
     contributions: Optional[list[Contribution]] = Field(default=[], description="""Specific actions taken by an Agent toward the creation, modification, validation, or deprecation of an Information Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity', 'RecordMetadata'], 'status': 'Draft'} })
-    dateAuthored: Optional[str] = Field(default=None, description="""When the information content was generated.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
-    specifiedBy: Optional[list[str]] = Field(default=[], description="""A specification that describes all or part of the process that led to creation of the Information Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
-    derivedFrom: Optional[list[InformationEntity]] = Field(default=[], description="""Another Information Entity from which this one is derived.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
-    reportedIn: Optional[list[str]] = Field(default=[], description="""A document in which the Information Entity is reported.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
+    date_authored: Optional[str] = Field(default=None, description="""When the information content was generated.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
+    specified_by: Optional[list[str]] = Field(default=[], description="""A specification that describes all or part of the process that led to creation of the Information Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
+    derived_from: Optional[list[InformationEntity]] = Field(default=[], description="""Another Information Entity from which this one is derived.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
+    reported_in: Optional[list[str]] = Field(default=[], description="""A document in which the Information Entity is reported.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
     sources: Optional[list[str]] = Field(default=[], description="""A document or other information resource in which the information entity, or evidence supporting it, is reported.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
-    recordMetadata: Optional[RecordMetadata] = Field(default=None, description="""Provenance metadata about a specific concrete record of information.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
-    id: str = Field(default=..., description="""The logical identifier of the entity in the system of record, e.g. a UUID.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity', 'EvidencePacket', 'EntitySnapshot'], 'status': 'Draft'} })
+    record_metadata: Optional[RecordMetadata] = Field(default=None, description="""Provenance metadata about a specific concrete record of information.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
+    id: str = Field(default=..., description="""The logical identifier of the entity in the system of record, e.g. a UUID.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity',
+                       'EvidencePacket',
+                       'CurationDecision',
+                       'EntitySnapshot'],
+         'status': 'Draft'} })
     identifiers: Optional[list[str]] = Field(default=[], description="""Globally-unique business identifiers or accession numbers for the entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity'], 'status': 'Informative'} })
     type: str = Field(default=..., description="""The name of the class that is instantiated by a data object representing the Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity', 'Synonym'], 'status': 'Draft'} })
     label: Optional[str] = Field(default=None, description="""A primary name for the Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity', 'Coding', 'EntitySnapshot'], 'status': 'Draft'} })
-    alternativeLabels: Optional[list[str]] = Field(default=[], description="""Alternative name(s) for the Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity'], 'status': 'Draft'} })
+    alternative_labels: Optional[list[str]] = Field(default=[], description="""Alternative name(s) for the Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity'], 'status': 'Draft'} })
     description: Optional[str] = Field(default=None, description="""A free text description of the Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity', 'Score'], 'status': 'Draft'} })
     extensions: Optional[list[Extension]] = Field(default=[], description="""A list of extensions to the Entity, that allow for capture of information not directly supported by elements defined in the model.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity'], 'status': 'Draft'} })
 
@@ -562,13 +619,17 @@ class Activity(Entity):
 
     subtype: Optional[Coding] = Field(default=None, description="""A specific type of activity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Document', 'DataItem', 'DataSet', 'Activity', 'Agent'],
          'status': 'Informative'} })
-    date: Optional[date] = Field(default=None, description="""The date that the Activity was completed.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Activity', 'AgentContribution'], 'status': 'Draft'} })
-    performedBy: Optional[list[Agent]] = Field(default=[], description="""An Agent who participated in executing the Activity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Activity'], 'status': 'Draft'} })
-    id: str = Field(default=..., description="""The logical identifier of the entity in the system of record, e.g. a UUID.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity', 'EvidencePacket', 'EntitySnapshot'], 'status': 'Draft'} })
+    date: Optional[str] = Field(default=None, description="""The date that the Activity was completed (ISO 8601 string).""", json_schema_extra = { "linkml_meta": {'domain_of': ['Activity', 'AgentContribution'], 'status': 'Draft'} })
+    performed_by: Optional[list[Agent]] = Field(default=[], description="""An Agent who participated in executing the Activity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Activity'], 'status': 'Draft'} })
+    id: str = Field(default=..., description="""The logical identifier of the entity in the system of record, e.g. a UUID.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity',
+                       'EvidencePacket',
+                       'CurationDecision',
+                       'EntitySnapshot'],
+         'status': 'Draft'} })
     identifiers: Optional[list[str]] = Field(default=[], description="""Globally-unique business identifiers or accession numbers for the entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity'], 'status': 'Informative'} })
     type: str = Field(default=..., description="""The name of the class that is instantiated by a data object representing the Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity', 'Synonym'], 'status': 'Draft'} })
     label: Optional[str] = Field(default=None, description="""A primary name for the Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity', 'Coding', 'EntitySnapshot'], 'status': 'Draft'} })
-    alternativeLabels: Optional[list[str]] = Field(default=[], description="""Alternative name(s) for the Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity'], 'status': 'Draft'} })
+    alternative_labels: Optional[list[str]] = Field(default=[], description="""Alternative name(s) for the Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity'], 'status': 'Draft'} })
     description: Optional[str] = Field(default=None, description="""A free text description of the Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity', 'Score'], 'status': 'Draft'} })
     extensions: Optional[list[Extension]] = Field(default=[], description="""A list of extensions to the Entity, that allow for capture of information not directly supported by elements defined in the model.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity'], 'status': 'Draft'} })
 
@@ -580,16 +641,20 @@ class Contribution(Activity):
     linkml_meta: ClassVar[LinkMLMeta] = LinkMLMeta({'from_schema': 'https://w3id.org/sepio-model', 'status': 'Draft'})
 
     contributor: Optional[Agent] = Field(default=None, description="""The Agent that made the contribution.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Contribution', 'AgentContribution'], 'status': 'Draft'} })
-    activityType: Optional[list[Coding]] = Field(default=[], description="""The specific type of activity performed or role played by an agent in making the contribution.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Contribution'], 'status': 'Draft'} })
+    activity_type: Optional[list[Coding]] = Field(default=[], description="""The specific type of activity performed or role played by an agent in making the contribution.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Contribution'], 'status': 'Draft'} })
     subtype: Optional[Coding] = Field(default=None, description="""A specific type of activity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Document', 'DataItem', 'DataSet', 'Activity', 'Agent'],
          'status': 'Informative'} })
-    date: Optional[date] = Field(default=None, description="""The date that the Activity was completed.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Activity', 'AgentContribution'], 'status': 'Draft'} })
-    performedBy: Optional[list[Agent]] = Field(default=[], description="""An Agent who participated in executing the Activity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Activity'], 'status': 'Draft'} })
-    id: str = Field(default=..., description="""The logical identifier of the entity in the system of record, e.g. a UUID.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity', 'EvidencePacket', 'EntitySnapshot'], 'status': 'Draft'} })
+    date: Optional[str] = Field(default=None, description="""The date that the Activity was completed (ISO 8601 string).""", json_schema_extra = { "linkml_meta": {'domain_of': ['Activity', 'AgentContribution'], 'status': 'Draft'} })
+    performed_by: Optional[list[Agent]] = Field(default=[], description="""An Agent who participated in executing the Activity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Activity'], 'status': 'Draft'} })
+    id: str = Field(default=..., description="""The logical identifier of the entity in the system of record, e.g. a UUID.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity',
+                       'EvidencePacket',
+                       'CurationDecision',
+                       'EntitySnapshot'],
+         'status': 'Draft'} })
     identifiers: Optional[list[str]] = Field(default=[], description="""Globally-unique business identifiers or accession numbers for the entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity'], 'status': 'Informative'} })
     type: str = Field(default=..., description="""The name of the class that is instantiated by a data object representing the Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity', 'Synonym'], 'status': 'Draft'} })
     label: Optional[str] = Field(default=None, description="""A primary name for the Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity', 'Coding', 'EntitySnapshot'], 'status': 'Draft'} })
-    alternativeLabels: Optional[list[str]] = Field(default=[], description="""Alternative name(s) for the Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity'], 'status': 'Draft'} })
+    alternative_labels: Optional[list[str]] = Field(default=[], description="""Alternative name(s) for the Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity'], 'status': 'Draft'} })
     description: Optional[str] = Field(default=None, description="""A free text description of the Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity', 'Score'], 'status': 'Draft'} })
     extensions: Optional[list[Extension]] = Field(default=[], description="""A list of extensions to the Entity, that allow for capture of information not directly supported by elements defined in the model.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity'], 'status': 'Draft'} })
 
@@ -604,11 +669,15 @@ class Agent(Entity):
          'status': 'Draft'} })
     name: Optional[str] = Field(default=None, description="""The given name of the Agent.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Agent', 'Qualifier', 'Extension', 'Characteristic'],
          'status': 'Draft'} })
-    id: str = Field(default=..., description="""The logical identifier of the entity in the system of record, e.g. a UUID.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity', 'EvidencePacket', 'EntitySnapshot'], 'status': 'Draft'} })
+    id: str = Field(default=..., description="""The logical identifier of the entity in the system of record, e.g. a UUID.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity',
+                       'EvidencePacket',
+                       'CurationDecision',
+                       'EntitySnapshot'],
+         'status': 'Draft'} })
     identifiers: Optional[list[str]] = Field(default=[], description="""Globally-unique business identifiers or accession numbers for the entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity'], 'status': 'Informative'} })
     type: str = Field(default=..., description="""The name of the class that is instantiated by a data object representing the Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity', 'Synonym'], 'status': 'Draft'} })
     label: Optional[str] = Field(default=None, description="""A primary name for the Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity', 'Coding', 'EntitySnapshot'], 'status': 'Draft'} })
-    alternativeLabels: Optional[list[str]] = Field(default=[], description="""Alternative name(s) for the Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity'], 'status': 'Draft'} })
+    alternative_labels: Optional[list[str]] = Field(default=[], description="""Alternative name(s) for the Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity'], 'status': 'Draft'} })
     description: Optional[str] = Field(default=None, description="""A free text description of the Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity', 'Score'], 'status': 'Draft'} })
     extensions: Optional[list[Extension]] = Field(default=[], description="""A list of extensions to the Entity, that allow for capture of information not directly supported by elements defined in the model.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity'], 'status': 'Draft'} })
 
@@ -619,15 +688,19 @@ class Proposition(Entity):
     """
     linkml_meta: ClassVar[LinkMLMeta] = LinkMLMeta({'from_schema': 'https://w3id.org/sepio-model', 'status': 'Informative'})
 
-    propositionText: Optional[str] = Field(default=None, description="""A natural-language expression of the Proposition's meaning.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Proposition'], 'status': 'Informative'} })
+    proposition_text: Optional[str] = Field(default=None, description="""A natural-language expression of the Proposition's meaning.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Proposition'], 'status': 'Informative'} })
     subject: str = Field(default=..., description="""The Entity or concept about which the Proposition is made.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Statement', 'Proposition'], 'status': 'Informative'} })
     predicate: Optional[Coding] = Field(default=None, description="""The relationship declared to hold between subject and object.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Statement', 'Proposition'], 'status': 'Informative'} })
     object: Optional[str] = Field(default=None, description="""An Entity or concept related to the subject via the predicate.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Statement', 'Proposition'], 'status': 'Informative'} })
-    id: str = Field(default=..., description="""The logical identifier of the entity in the system of record, e.g. a UUID.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity', 'EvidencePacket', 'EntitySnapshot'], 'status': 'Draft'} })
+    id: str = Field(default=..., description="""The logical identifier of the entity in the system of record, e.g. a UUID.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity',
+                       'EvidencePacket',
+                       'CurationDecision',
+                       'EntitySnapshot'],
+         'status': 'Draft'} })
     identifiers: Optional[list[str]] = Field(default=[], description="""Globally-unique business identifiers or accession numbers for the entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity'], 'status': 'Informative'} })
     type: str = Field(default=..., description="""The name of the class that is instantiated by a data object representing the Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity', 'Synonym'], 'status': 'Draft'} })
     label: Optional[str] = Field(default=None, description="""A primary name for the Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity', 'Coding', 'EntitySnapshot'], 'status': 'Draft'} })
-    alternativeLabels: Optional[list[str]] = Field(default=[], description="""Alternative name(s) for the Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity'], 'status': 'Draft'} })
+    alternative_labels: Optional[list[str]] = Field(default=[], description="""Alternative name(s) for the Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity'], 'status': 'Draft'} })
     description: Optional[str] = Field(default=None, description="""A free text description of the Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity', 'Score'], 'status': 'Draft'} })
     extensions: Optional[list[Extension]] = Field(default=[], description="""A list of extensions to the Entity, that allow for capture of information not directly supported by elements defined in the model.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity'], 'status': 'Draft'} })
 
@@ -650,7 +723,7 @@ class Coding(Utility):
     code: Optional[str] = Field(default=None, description="""A symbol uniquely identifying the concept (CURIE format preferred).""", json_schema_extra = { "linkml_meta": {'domain_of': ['Coding']} })
     label: Optional[str] = Field(default=None, description="""The human-readable name for the coded concept.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity', 'Coding', 'EntitySnapshot']} })
     system: Optional[str] = Field(default=None, description="""The terminology/code system that defined the code.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Coding']} })
-    systemVersion: Optional[str] = Field(default=None, description="""Version of the terminology or code system.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Coding', 'Expression']} })
+    system_version: Optional[str] = Field(default=None, description="""Version of the terminology or code system.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Coding', 'Expression']} })
 
 
 class Qualifier(Utility):
@@ -682,8 +755,8 @@ class Expression(Utility):
                        'Extension',
                        'Score',
                        'Synonym']} })
-    systemURL: Optional[str] = Field(default=None, description="""A URL for the nomenclature system.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Expression']} })
-    systemVersion: Optional[str] = Field(default=None, description="""The version of the nomenclature system.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Coding', 'Expression']} })
+    system_url: Optional[str] = Field(default=None, description="""A URL for the nomenclature system.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Expression']} })
+    system_version: Optional[str] = Field(default=None, description="""The version of the nomenclature system.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Coding', 'Expression']} })
 
 
 class Extension(Utility):
@@ -692,7 +765,7 @@ class Extension(Utility):
     """
     linkml_meta: ClassVar[LinkMLMeta] = LinkMLMeta({'from_schema': 'https://w3id.org/sepio-model'})
 
-    extensionDescription: Optional[str] = Field(default=None, description="""Description of the extension element's intended meaning and use.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Extension']} })
+    extension_description: Optional[str] = Field(default=None, description="""Description of the extension element's intended meaning and use.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Extension']} })
     name: str = Field(default=..., description="""A name for the Extension.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Agent', 'Qualifier', 'Extension', 'Characteristic']} })
     value: str = Field(default=..., description="""The value of the Extension.""", json_schema_extra = { "linkml_meta": {'domain_of': ['DataItem',
                        'Qualifier',
@@ -708,10 +781,10 @@ class RecordMetadata(Utility):
     """
     linkml_meta: ClassVar[LinkMLMeta] = LinkMLMeta({'from_schema': 'https://w3id.org/sepio-model', 'status': 'Draft'})
 
-    recordIdentifier: Optional[str] = Field(default=None, description="""The identifier of the record.""", json_schema_extra = { "linkml_meta": {'domain_of': ['RecordMetadata'], 'status': 'Draft'} })
-    recordVersion: Optional[str] = Field(default=None, description="""The version number of the record.""", json_schema_extra = { "linkml_meta": {'domain_of': ['RecordMetadata'], 'status': 'Draft'} })
-    derivedFromRecord: Optional[list[str]] = Field(default=[], description="""Another data record from which this was derived.""", json_schema_extra = { "linkml_meta": {'domain_of': ['RecordMetadata'], 'status': 'Draft'} })
-    dateRecordCreated: Optional[str] = Field(default=None, description="""The date the record was initially created.""", json_schema_extra = { "linkml_meta": {'domain_of': ['RecordMetadata'], 'status': 'Draft'} })
+    record_identifier: Optional[str] = Field(default=None, description="""The identifier of the record.""", json_schema_extra = { "linkml_meta": {'domain_of': ['RecordMetadata'], 'status': 'Draft'} })
+    record_version: Optional[str] = Field(default=None, description="""The version number of the record.""", json_schema_extra = { "linkml_meta": {'domain_of': ['RecordMetadata'], 'status': 'Draft'} })
+    derived_from_record: Optional[list[str]] = Field(default=[], description="""Another data record from which this was derived.""", json_schema_extra = { "linkml_meta": {'domain_of': ['RecordMetadata'], 'status': 'Draft'} })
+    date_record_created: Optional[str] = Field(default=None, description="""The date the record was initially created.""", json_schema_extra = { "linkml_meta": {'domain_of': ['RecordMetadata'], 'status': 'Draft'} })
     contributions: Optional[list[Contribution]] = Field(default=[], description="""Contributions made by an agent to the creation or management of this record.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity', 'RecordMetadata'], 'status': 'Draft'} })
 
 
@@ -732,14 +805,18 @@ class StudyGroup(Entity):
     """
     linkml_meta: ClassVar[LinkMLMeta] = LinkMLMeta({'from_schema': 'https://w3id.org/sepio-model', 'status': 'Draft'})
 
-    memberCount: Optional[int] = Field(default=None, description="""Total number of members in the StudyGroup.""", json_schema_extra = { "linkml_meta": {'domain_of': ['StudyGroup'], 'status': 'Informative'} })
-    isSubsetOf: Optional[list[StudyGroup]] = Field(default=[], description="""A larger StudyGroup of which this is a subset.""", json_schema_extra = { "linkml_meta": {'domain_of': ['StudyGroup'], 'status': 'Draft'} })
+    member_count: Optional[int] = Field(default=None, description="""Total number of members in the StudyGroup.""", json_schema_extra = { "linkml_meta": {'domain_of': ['StudyGroup'], 'status': 'Informative'} })
+    is_subset_of: Optional[list[StudyGroup]] = Field(default=[], description="""A larger StudyGroup of which this is a subset.""", json_schema_extra = { "linkml_meta": {'domain_of': ['StudyGroup'], 'status': 'Draft'} })
     characteristics: Optional[list[Characteristic]] = Field(default=[], description="""Features shared by all members.""", json_schema_extra = { "linkml_meta": {'domain_of': ['StudyGroup'], 'status': 'Draft'} })
-    id: str = Field(default=..., description="""The logical identifier of the entity in the system of record, e.g. a UUID.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity', 'EvidencePacket', 'EntitySnapshot'], 'status': 'Draft'} })
+    id: str = Field(default=..., description="""The logical identifier of the entity in the system of record, e.g. a UUID.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity',
+                       'EvidencePacket',
+                       'CurationDecision',
+                       'EntitySnapshot'],
+         'status': 'Draft'} })
     identifiers: Optional[list[str]] = Field(default=[], description="""Globally-unique business identifiers or accession numbers for the entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity'], 'status': 'Informative'} })
     type: str = Field(default=..., description="""The name of the class that is instantiated by a data object representing the Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity', 'Synonym'], 'status': 'Draft'} })
     label: Optional[str] = Field(default=None, description="""A primary name for the Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity', 'Coding', 'EntitySnapshot'], 'status': 'Draft'} })
-    alternativeLabels: Optional[list[str]] = Field(default=[], description="""Alternative name(s) for the Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity'], 'status': 'Draft'} })
+    alternative_labels: Optional[list[str]] = Field(default=[], description="""Alternative name(s) for the Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity'], 'status': 'Draft'} })
     description: Optional[str] = Field(default=None, description="""A free text description of the Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity', 'Score'], 'status': 'Draft'} })
     extensions: Optional[list[Extension]] = Field(default=[], description="""A list of extensions to the Entity, that allow for capture of information not directly supported by elements defined in the model.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity'], 'status': 'Draft'} })
 
@@ -750,10 +827,13 @@ class EvidencePacket(ConfiguredBaseModel):
     """
     linkml_meta: ClassVar[LinkMLMeta] = LinkMLMeta({'from_schema': 'https://w3id.org/sieve', 'tree_root': True})
 
-    id: str = Field(default=..., description="""Unique identifier for this evidence packet.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity', 'EvidencePacket', 'EntitySnapshot']} })
+    id: str = Field(default=..., description="""Unique identifier for this evidence packet.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity',
+                       'EvidencePacket',
+                       'CurationDecision',
+                       'EntitySnapshot']} })
     statement: SieveStatement = Field(default=..., description="""The statement/assertion being curated.""", json_schema_extra = { "linkml_meta": {'domain_of': ['EvidencePacket']} })
     status: CurationStatus = Field(default=CurationStatus.UNREVIEWED, description="""Current curation workflow status.""", json_schema_extra = { "linkml_meta": {'domain_of': ['EvidencePacket'], 'ifabsent': 'string(UNREVIEWED)'} })
-    hasEvidenceLines: Optional[list[SieveEvidenceLine]] = Field(default=[], description="""Evidence lines supporting or disputing the statement.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Statement', 'EvidencePacket']} })
+    has_evidence_lines: Optional[list[SieveEvidenceLine]] = Field(default=[], description="""Evidence lines supporting or disputing the statement.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Statement', 'EvidencePacket']} })
     evidence_synthesis: Optional[EvidenceSynthesis] = Field(default=None, description="""Synthesis of the evidence with reasoning.""", json_schema_extra = { "linkml_meta": {'domain_of': ['EvidencePacket']} })
     curated_by: Optional[CurationActivity] = Field(default=None, description="""The curation activity that reviewed/approved this packet.""", json_schema_extra = { "linkml_meta": {'domain_of': ['EvidencePacket']} })
     created: Optional[date] = Field(default=None, description="""When this packet was created.""", json_schema_extra = { "linkml_meta": {'domain_of': ['EvidencePacket']} })
@@ -762,13 +842,13 @@ class EvidencePacket(ConfiguredBaseModel):
 
 class SieveStatement(Statement):
     """
-    Sieve extension of SEPIO Statement. A subject-predicate-object assertion being curated. Inherits subject, predicate (Coding), object, statementText, and evidence-linking attributes from SEPIO Statement. Adds human-readable labels for subject and object. Evidence lines are kept on the EvidencePacket container, not nested here.
+    Sieve extension of SEPIO Statement. A subject-predicate-object assertion being curated. Inherits subject, predicate (Coding), object, statement_text, and evidence-linking attributes from SEPIO Statement. Adds human-readable labels for subject and object. Evidence lines are kept on the EvidencePacket container, not nested here.
     """
     linkml_meta: ClassVar[LinkMLMeta] = LinkMLMeta({'from_schema': 'https://w3id.org/sieve'})
 
-    subjectLabel: Optional[str] = Field(default=None, description="""Human-readable label for the subject.""", json_schema_extra = { "linkml_meta": {'domain_of': ['SieveStatement']} })
-    objectLabel: Optional[str] = Field(default=None, description="""Human-readable label for the object.""", json_schema_extra = { "linkml_meta": {'domain_of': ['SieveStatement']} })
-    statementText: Optional[str] = Field(default=None, description="""A natural-language expression of what a Statement asserts to be true.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Statement'], 'status': 'Draft'} })
+    subject_label: Optional[str] = Field(default=None, description="""Human-readable label for the subject.""", json_schema_extra = { "linkml_meta": {'domain_of': ['SieveStatement']} })
+    object_label: Optional[str] = Field(default=None, description="""Human-readable label for the object.""", json_schema_extra = { "linkml_meta": {'domain_of': ['SieveStatement']} })
+    statement_text: Optional[str] = Field(default=None, description="""A natural-language expression of what a Statement asserts to be true.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Statement'], 'status': 'Draft'} })
     proposition: Optional[Proposition] = Field(default=None, description="""A possible fact that the Statement assesses or puts forth as true.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Statement'], 'status': 'Informative'} })
     subject: Optional[str] = Field(default=None, description="""The Entity or concept about which the Statement is made.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Statement', 'Proposition'], 'status': 'Draft'} })
     predicate: Optional[Coding] = Field(default=None, description="""The relationship declared to hold between the subject and the object of the Statement.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Statement', 'Proposition'], 'status': 'Draft'} })
@@ -777,21 +857,25 @@ class SieveStatement(Statement):
     direction: Optional[str] = Field(default=None, description="""Whether the Statement supports, disputes, or is neutral w.r.t. the validity of its Proposition.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Statement', 'EvidenceSynthesis'], 'status': 'Draft'} })
     strength: Optional[str] = Field(default=None, description="""The strength of a Proposition's assessment in the direction indicated.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Statement'], 'status': 'Draft'} })
     score: Optional[float] = Field(default=None, description="""A quantitative score indicating the strength of a Proposition's validity assessment.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Statement', 'EvidenceSynthesis'], 'status': 'Draft'} })
-    hasEvidenceLines: Optional[list[EvidenceLine]] = Field(default=[], description="""Evidence-based arguments that support or dispute the validity of the Statement's proposition.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Statement', 'EvidencePacket'], 'status': 'Draft'} })
-    hasEvidence: Optional[list[InformationEntity]] = Field(default=[], description="""A piece of information that contributes to an argument for or against the Statement's proposition. Shortcut bypassing EvidenceLine.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Statement'], 'status': 'Informative'} })
-    isAbout: Optional[list[str]] = Field(default=[], description="""An entity or concept that the information entity describes/is about.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Informative'} })
+    has_evidence_lines: Optional[list[EvidenceLine]] = Field(default=[], description="""Evidence-based arguments that support or dispute the validity of the Statement's proposition.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Statement', 'EvidencePacket'], 'status': 'Draft'} })
+    has_evidence: Optional[list[InformationEntity]] = Field(default=[], description="""A piece of information that contributes to an argument for or against the Statement's proposition. Shortcut bypassing EvidenceLine.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Statement'], 'status': 'Informative'} })
+    is_about: Optional[list[str]] = Field(default=[], description="""An entity or concept that the information entity describes/is about.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Informative'} })
     contributions: Optional[list[Contribution]] = Field(default=[], description="""Specific actions taken by an Agent toward the creation, modification, validation, or deprecation of an Information Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity', 'RecordMetadata'], 'status': 'Draft'} })
-    dateAuthored: Optional[str] = Field(default=None, description="""When the information content was generated.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
-    specifiedBy: Optional[list[str]] = Field(default=[], description="""A specification that describes all or part of the process that led to creation of the Information Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
-    derivedFrom: Optional[list[InformationEntity]] = Field(default=[], description="""Another Information Entity from which this one is derived.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
-    reportedIn: Optional[list[str]] = Field(default=[], description="""A document in which the Information Entity is reported.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
+    date_authored: Optional[str] = Field(default=None, description="""When the information content was generated.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
+    specified_by: Optional[list[str]] = Field(default=[], description="""A specification that describes all or part of the process that led to creation of the Information Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
+    derived_from: Optional[list[InformationEntity]] = Field(default=[], description="""Another Information Entity from which this one is derived.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
+    reported_in: Optional[list[str]] = Field(default=[], description="""A document in which the Information Entity is reported.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
     sources: Optional[list[str]] = Field(default=[], description="""A document or other information resource in which the information entity, or evidence supporting it, is reported.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
-    recordMetadata: Optional[RecordMetadata] = Field(default=None, description="""Provenance metadata about a specific concrete record of information.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
-    id: str = Field(default=..., description="""The logical identifier of the entity in the system of record, e.g. a UUID.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity', 'EvidencePacket', 'EntitySnapshot'], 'status': 'Draft'} })
+    record_metadata: Optional[RecordMetadata] = Field(default=None, description="""Provenance metadata about a specific concrete record of information.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
+    id: str = Field(default=..., description="""The logical identifier of the entity in the system of record, e.g. a UUID.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity',
+                       'EvidencePacket',
+                       'CurationDecision',
+                       'EntitySnapshot'],
+         'status': 'Draft'} })
     identifiers: Optional[list[str]] = Field(default=[], description="""Globally-unique business identifiers or accession numbers for the entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity'], 'status': 'Informative'} })
     type: str = Field(default=..., description="""The name of the class that is instantiated by a data object representing the Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity', 'Synonym'], 'status': 'Draft'} })
     label: Optional[str] = Field(default=None, description="""A primary name for the Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity', 'Coding', 'EntitySnapshot'], 'status': 'Draft'} })
-    alternativeLabels: Optional[list[str]] = Field(default=[], description="""Alternative name(s) for the Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity'], 'status': 'Draft'} })
+    alternative_labels: Optional[list[str]] = Field(default=[], description="""Alternative name(s) for the Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity'], 'status': 'Draft'} })
     description: Optional[str] = Field(default=None, description="""A free text description of the Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity', 'Score'], 'status': 'Draft'} })
     extensions: Optional[list[Extension]] = Field(default=[], description="""A list of extensions to the Entity, that allow for capture of information not directly supported by elements defined in the model.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity'], 'status': 'Draft'} })
 
@@ -802,25 +886,40 @@ class SieveEvidenceLine(EvidenceLine):
     """
     linkml_meta: ClassVar[LinkMLMeta] = LinkMLMeta({'from_schema': 'https://w3id.org/sieve'})
 
-    hasEvidenceItems: Optional[list[InformationEntity]] = Field(default=[], description="""Individual pieces of information evaluated as evidence in building this argument.""", json_schema_extra = { "linkml_meta": {'domain_of': ['EvidenceLine'], 'status': 'Draft'} })
-    directionOfEvidenceProvided: Optional[str] = Field(default=None, description="""The direction of support toward its target Proposition (supports, disputes, neutral).""", json_schema_extra = { "linkml_meta": {'domain_of': ['EvidenceLine'], 'status': 'Draft'} })
-    strengthOfEvidenceProvided: Optional[str] = Field(default=None, description="""The qualitative strength of support for or against its target Proposition.""", json_schema_extra = { "linkml_meta": {'domain_of': ['EvidenceLine'], 'status': 'Draft'} })
-    scoreOfEvidenceProvided: Optional[float] = Field(default=None, description="""A quantitative score indicating the strength of support.""", json_schema_extra = { "linkml_meta": {'domain_of': ['EvidenceLine'], 'status': 'Draft'} })
-    isAbout: Optional[list[str]] = Field(default=[], description="""An entity or concept that the information entity describes/is about.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Informative'} })
+    has_evidence_items: Optional[list[InformationEntity]] = Field(default=[], description="""Individual pieces of information evaluated as evidence in building this argument.""", json_schema_extra = { "linkml_meta": {'domain_of': ['EvidenceLine'], 'status': 'Draft'} })
+    direction_of_evidence_provided: Optional[str] = Field(default=None, description="""The direction of support toward its target Proposition (supports, disputes, neutral).""", json_schema_extra = { "linkml_meta": {'domain_of': ['EvidenceLine'], 'status': 'Draft'} })
+    strength_of_evidence_provided: Optional[str] = Field(default=None, description="""The qualitative strength of support for or against its target Proposition.""", json_schema_extra = { "linkml_meta": {'domain_of': ['EvidenceLine'], 'status': 'Draft'} })
+    score_of_evidence_provided: Optional[float] = Field(default=None, description="""A quantitative score indicating the strength of support.""", json_schema_extra = { "linkml_meta": {'domain_of': ['EvidenceLine'], 'status': 'Draft'} })
+    is_about: Optional[list[str]] = Field(default=[], description="""An entity or concept that the information entity describes/is about.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Informative'} })
     contributions: Optional[list[Contribution]] = Field(default=[], description="""Specific actions taken by an Agent toward the creation, modification, validation, or deprecation of an Information Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity', 'RecordMetadata'], 'status': 'Draft'} })
-    dateAuthored: Optional[str] = Field(default=None, description="""When the information content was generated.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
-    specifiedBy: Optional[list[str]] = Field(default=[], description="""A specification that describes all or part of the process that led to creation of the Information Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
-    derivedFrom: Optional[list[InformationEntity]] = Field(default=[], description="""Another Information Entity from which this one is derived.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
-    reportedIn: Optional[list[str]] = Field(default=[], description="""A document in which the Information Entity is reported.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
+    date_authored: Optional[str] = Field(default=None, description="""When the information content was generated.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
+    specified_by: Optional[list[str]] = Field(default=[], description="""A specification that describes all or part of the process that led to creation of the Information Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
+    derived_from: Optional[list[InformationEntity]] = Field(default=[], description="""Another Information Entity from which this one is derived.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
+    reported_in: Optional[list[str]] = Field(default=[], description="""A document in which the Information Entity is reported.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
     sources: Optional[list[str]] = Field(default=[], description="""A document or other information resource in which the information entity, or evidence supporting it, is reported.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
-    recordMetadata: Optional[RecordMetadata] = Field(default=None, description="""Provenance metadata about a specific concrete record of information.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
-    id: str = Field(default=..., description="""The logical identifier of the entity in the system of record, e.g. a UUID.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity', 'EvidencePacket', 'EntitySnapshot'], 'status': 'Draft'} })
+    record_metadata: Optional[RecordMetadata] = Field(default=None, description="""Provenance metadata about a specific concrete record of information.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
+    id: str = Field(default=..., description="""The logical identifier of the entity in the system of record, e.g. a UUID.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity',
+                       'EvidencePacket',
+                       'CurationDecision',
+                       'EntitySnapshot'],
+         'status': 'Draft'} })
     identifiers: Optional[list[str]] = Field(default=[], description="""Globally-unique business identifiers or accession numbers for the entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity'], 'status': 'Informative'} })
     type: str = Field(default=..., description="""The name of the class that is instantiated by a data object representing the Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity', 'Synonym'], 'status': 'Draft'} })
     label: Optional[str] = Field(default=None, description="""A primary name for the Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity', 'Coding', 'EntitySnapshot'], 'status': 'Draft'} })
-    alternativeLabels: Optional[list[str]] = Field(default=[], description="""Alternative name(s) for the Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity'], 'status': 'Draft'} })
+    alternative_labels: Optional[list[str]] = Field(default=[], description="""Alternative name(s) for the Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity'], 'status': 'Draft'} })
     description: Optional[str] = Field(default=None, description="""A free text description of the Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity', 'Score'], 'status': 'Draft'} })
     extensions: Optional[list[Extension]] = Field(default=[], description="""A list of extensions to the Entity, that allow for capture of information not directly supported by elements defined in the model.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity'], 'status': 'Draft'} })
+
+
+class CuratedEvidence(ConfiguredBaseModel):
+    """
+    Curation-workflow slots grafted onto every Sieve evidence item: a steward's per-item verdict and an explicit ECO hook. (sieve-specific; not SEPIO)
+    """
+    linkml_meta: ClassVar[LinkMLMeta] = LinkMLMeta({'from_schema': 'https://w3id.org/sieve', 'mixin': True})
+
+    rating: Optional[CurationStatus] = Field(default=None, description="""The evidence steward's verdict on this individual evidence item.""", json_schema_extra = { "linkml_meta": {'domain_of': ['CuratedEvidence']} })
+    eco_code: Optional[str] = Field(default=None, description="""Evidence & Conclusion Ontology (ECO) term for this evidence item.""", json_schema_extra = { "linkml_meta": {'domain_of': ['CuratedEvidence']} })
+    eco_label: Optional[str] = Field(default=None, description="""Human-readable label of the ECO term.""", json_schema_extra = { "linkml_meta": {'domain_of': ['CuratedEvidence']} })
 
 
 class SieveEvidenceItem(InformationEntity):
@@ -829,30 +928,37 @@ class SieveEvidenceItem(InformationEntity):
     """
     linkml_meta: ClassVar[LinkMLMeta] = LinkMLMeta({'from_schema': 'https://w3id.org/sieve'})
 
-    evidenceItemType: Optional[EvidenceItemType] = Field(default=None, description="""Type of evidence item (for polymorphism).""", json_schema_extra = { "linkml_meta": {'domain_of': ['SieveEvidenceItem']} })
-    isAbout: Optional[list[str]] = Field(default=[], description="""An entity or concept that the information entity describes/is about.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Informative'} })
+    evidence_item_type: Optional[EvidenceItemType] = Field(default=None, description="""Type of evidence item (for polymorphism).""", json_schema_extra = { "linkml_meta": {'domain_of': ['SieveEvidenceItem']} })
+    is_about: Optional[list[str]] = Field(default=[], description="""An entity or concept that the information entity describes/is about.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Informative'} })
     contributions: Optional[list[Contribution]] = Field(default=[], description="""Specific actions taken by an Agent toward the creation, modification, validation, or deprecation of an Information Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity', 'RecordMetadata'], 'status': 'Draft'} })
-    dateAuthored: Optional[str] = Field(default=None, description="""When the information content was generated.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
-    specifiedBy: Optional[list[str]] = Field(default=[], description="""A specification that describes all or part of the process that led to creation of the Information Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
-    derivedFrom: Optional[list[InformationEntity]] = Field(default=[], description="""Another Information Entity from which this one is derived.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
-    reportedIn: Optional[list[str]] = Field(default=[], description="""A document in which the Information Entity is reported.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
+    date_authored: Optional[str] = Field(default=None, description="""When the information content was generated.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
+    specified_by: Optional[list[str]] = Field(default=[], description="""A specification that describes all or part of the process that led to creation of the Information Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
+    derived_from: Optional[list[InformationEntity]] = Field(default=[], description="""Another Information Entity from which this one is derived.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
+    reported_in: Optional[list[str]] = Field(default=[], description="""A document in which the Information Entity is reported.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
     sources: Optional[list[str]] = Field(default=[], description="""A document or other information resource in which the information entity, or evidence supporting it, is reported.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
-    recordMetadata: Optional[RecordMetadata] = Field(default=None, description="""Provenance metadata about a specific concrete record of information.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
-    id: str = Field(default=..., description="""The logical identifier of the entity in the system of record, e.g. a UUID.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity', 'EvidencePacket', 'EntitySnapshot'], 'status': 'Draft'} })
+    record_metadata: Optional[RecordMetadata] = Field(default=None, description="""Provenance metadata about a specific concrete record of information.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
+    id: str = Field(default=..., description="""The logical identifier of the entity in the system of record, e.g. a UUID.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity',
+                       'EvidencePacket',
+                       'CurationDecision',
+                       'EntitySnapshot'],
+         'status': 'Draft'} })
     identifiers: Optional[list[str]] = Field(default=[], description="""Globally-unique business identifiers or accession numbers for the entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity'], 'status': 'Informative'} })
     type: str = Field(default=..., description="""The name of the class that is instantiated by a data object representing the Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity', 'Synonym'], 'status': 'Draft'} })
     label: Optional[str] = Field(default=None, description="""A primary name for the Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity', 'Coding', 'EntitySnapshot'], 'status': 'Draft'} })
-    alternativeLabels: Optional[list[str]] = Field(default=[], description="""Alternative name(s) for the Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity'], 'status': 'Draft'} })
+    alternative_labels: Optional[list[str]] = Field(default=[], description="""Alternative name(s) for the Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity'], 'status': 'Draft'} })
     description: Optional[str] = Field(default=None, description="""A free text description of the Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity', 'Score'], 'status': 'Draft'} })
     extensions: Optional[list[Extension]] = Field(default=[], description="""A list of extensions to the Entity, that allow for capture of information not directly supported by elements defined in the model.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity'], 'status': 'Draft'} })
 
 
-class SieveDataItem(DataItem):
+class SieveDataItem(CuratedEvidence, DataItem):
     """
     Sieve extension of SEPIO DataItem.
     """
-    linkml_meta: ClassVar[LinkMLMeta] = LinkMLMeta({'from_schema': 'https://w3id.org/sieve'})
+    linkml_meta: ClassVar[LinkMLMeta] = LinkMLMeta({'from_schema': 'https://w3id.org/sieve', 'mixins': ['CuratedEvidence']})
 
+    rating: Optional[CurationStatus] = Field(default=None, description="""The evidence steward's verdict on this individual evidence item.""", json_schema_extra = { "linkml_meta": {'domain_of': ['CuratedEvidence']} })
+    eco_code: Optional[str] = Field(default=None, description="""Evidence & Conclusion Ontology (ECO) term for this evidence item.""", json_schema_extra = { "linkml_meta": {'domain_of': ['CuratedEvidence']} })
+    eco_label: Optional[str] = Field(default=None, description="""Human-readable label of the ECO term.""", json_schema_extra = { "linkml_meta": {'domain_of': ['CuratedEvidence']} })
     subtype: Optional[Coding] = Field(default=None, description="""A specific type of data the DataItem represents.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Document', 'DataItem', 'DataSet', 'Activity', 'Agent'],
          'status': 'Informative'} })
     value: str = Field(default=..., description="""The value of the data item.""", json_schema_extra = { "linkml_meta": {'domain_of': ['DataItem',
@@ -863,136 +969,167 @@ class SieveDataItem(DataItem):
                        'Synonym'],
          'status': 'Informative'} })
     unit: Optional[Coding] = Field(default=None, description="""A unit of measure for the value.""", json_schema_extra = { "linkml_meta": {'domain_of': ['DataItem'], 'status': 'Informative'} })
-    isAbout: Optional[list[str]] = Field(default=[], description="""An entity or concept that the information entity describes/is about.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Informative'} })
+    is_about: Optional[list[str]] = Field(default=[], description="""An entity or concept that the information entity describes/is about.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Informative'} })
     contributions: Optional[list[Contribution]] = Field(default=[], description="""Specific actions taken by an Agent toward the creation, modification, validation, or deprecation of an Information Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity', 'RecordMetadata'], 'status': 'Draft'} })
-    dateAuthored: Optional[str] = Field(default=None, description="""When the information content was generated.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
-    specifiedBy: Optional[list[str]] = Field(default=[], description="""A specification that describes all or part of the process that led to creation of the Information Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
-    derivedFrom: Optional[list[InformationEntity]] = Field(default=[], description="""Another Information Entity from which this one is derived.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
-    reportedIn: Optional[list[str]] = Field(default=[], description="""A document in which the Information Entity is reported.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
+    date_authored: Optional[str] = Field(default=None, description="""When the information content was generated.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
+    specified_by: Optional[list[str]] = Field(default=[], description="""A specification that describes all or part of the process that led to creation of the Information Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
+    derived_from: Optional[list[InformationEntity]] = Field(default=[], description="""Another Information Entity from which this one is derived.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
+    reported_in: Optional[list[str]] = Field(default=[], description="""A document in which the Information Entity is reported.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
     sources: Optional[list[str]] = Field(default=[], description="""A document or other information resource in which the information entity, or evidence supporting it, is reported.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
-    recordMetadata: Optional[RecordMetadata] = Field(default=None, description="""Provenance metadata about a specific concrete record of information.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
-    id: str = Field(default=..., description="""The logical identifier of the entity in the system of record, e.g. a UUID.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity', 'EvidencePacket', 'EntitySnapshot'], 'status': 'Draft'} })
+    record_metadata: Optional[RecordMetadata] = Field(default=None, description="""Provenance metadata about a specific concrete record of information.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
+    id: str = Field(default=..., description="""The logical identifier of the entity in the system of record, e.g. a UUID.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity',
+                       'EvidencePacket',
+                       'CurationDecision',
+                       'EntitySnapshot'],
+         'status': 'Draft'} })
     identifiers: Optional[list[str]] = Field(default=[], description="""Globally-unique business identifiers or accession numbers for the entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity'], 'status': 'Informative'} })
     type: str = Field(default=..., description="""The name of the class that is instantiated by a data object representing the Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity', 'Synonym'], 'status': 'Draft'} })
     label: Optional[str] = Field(default=None, description="""A primary name for the Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity', 'Coding', 'EntitySnapshot'], 'status': 'Draft'} })
-    alternativeLabels: Optional[list[str]] = Field(default=[], description="""Alternative name(s) for the Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity'], 'status': 'Draft'} })
+    alternative_labels: Optional[list[str]] = Field(default=[], description="""Alternative name(s) for the Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity'], 'status': 'Draft'} })
     description: Optional[str] = Field(default=None, description="""A free text description of the Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity', 'Score'], 'status': 'Draft'} })
     extensions: Optional[list[Extension]] = Field(default=[], description="""A list of extensions to the Entity, that allow for capture of information not directly supported by elements defined in the model.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity'], 'status': 'Draft'} })
 
 
-class SieveDocument(Document):
+class SieveDocument(CuratedEvidence, Document):
     """
     Sieve extension of SEPIO Document. Adds quote fields.
     """
-    linkml_meta: ClassVar[LinkMLMeta] = LinkMLMeta({'from_schema': 'https://w3id.org/sieve'})
+    linkml_meta: ClassVar[LinkMLMeta] = LinkMLMeta({'from_schema': 'https://w3id.org/sieve', 'mixins': ['CuratedEvidence']})
 
     quote: Optional[str] = Field(default=None, description="""Relevant quote from the document.""", json_schema_extra = { "linkml_meta": {'domain_of': ['SieveDocument']} })
-    quoteLocation: Optional[str] = Field(default=None, description="""Location of quote (page, section, figure).""", json_schema_extra = { "linkml_meta": {'domain_of': ['SieveDocument']} })
+    quote_location: Optional[str] = Field(default=None, description="""Location of quote (page, section, figure).""", json_schema_extra = { "linkml_meta": {'domain_of': ['SieveDocument']} })
+    rating: Optional[CurationStatus] = Field(default=None, description="""The evidence steward's verdict on this individual evidence item.""", json_schema_extra = { "linkml_meta": {'domain_of': ['CuratedEvidence']} })
+    eco_code: Optional[str] = Field(default=None, description="""Evidence & Conclusion Ontology (ECO) term for this evidence item.""", json_schema_extra = { "linkml_meta": {'domain_of': ['CuratedEvidence']} })
+    eco_label: Optional[str] = Field(default=None, description="""Human-readable label of the ECO term.""", json_schema_extra = { "linkml_meta": {'domain_of': ['CuratedEvidence']} })
     subtype: Optional[Coding] = Field(default=None, description="""A specific type of document (e.g. publication, patent, report).""", json_schema_extra = { "linkml_meta": {'domain_of': ['Document', 'DataItem', 'DataSet', 'Activity', 'Agent'],
          'status': 'Draft'} })
     title: Optional[str] = Field(default=None, description="""The official title given to the document by its authors.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Document']} })
     urls: Optional[list[str]] = Field(default=[], description="""URLs from which the Document content can be retrieved.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Document'], 'status': 'Draft'} })
     pmid: Optional[str] = Field(default=None, description="""A PubMed unique identifier for the document.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Document'], 'status': 'Draft'} })
     doi: Optional[str] = Field(default=None, description="""A Digital Object Identifier for the document.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Document'], 'status': 'Draft'} })
-    isAbout: Optional[list[str]] = Field(default=[], description="""An entity or concept that the information entity describes/is about.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Informative'} })
+    is_about: Optional[list[str]] = Field(default=[], description="""An entity or concept that the information entity describes/is about.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Informative'} })
     contributions: Optional[list[Contribution]] = Field(default=[], description="""Specific actions taken by an Agent toward the creation, modification, validation, or deprecation of an Information Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity', 'RecordMetadata'], 'status': 'Draft'} })
-    dateAuthored: Optional[str] = Field(default=None, description="""When the information content was generated.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
-    specifiedBy: Optional[list[str]] = Field(default=[], description="""A specification that describes all or part of the process that led to creation of the Information Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
-    derivedFrom: Optional[list[InformationEntity]] = Field(default=[], description="""Another Information Entity from which this one is derived.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
-    reportedIn: Optional[list[str]] = Field(default=[], description="""A document in which the Information Entity is reported.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
+    date_authored: Optional[str] = Field(default=None, description="""When the information content was generated.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
+    specified_by: Optional[list[str]] = Field(default=[], description="""A specification that describes all or part of the process that led to creation of the Information Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
+    derived_from: Optional[list[InformationEntity]] = Field(default=[], description="""Another Information Entity from which this one is derived.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
+    reported_in: Optional[list[str]] = Field(default=[], description="""A document in which the Information Entity is reported.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
     sources: Optional[list[str]] = Field(default=[], description="""A document or other information resource in which the information entity, or evidence supporting it, is reported.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
-    recordMetadata: Optional[RecordMetadata] = Field(default=None, description="""Provenance metadata about a specific concrete record of information.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
-    id: str = Field(default=..., description="""The logical identifier of the entity in the system of record, e.g. a UUID.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity', 'EvidencePacket', 'EntitySnapshot'], 'status': 'Draft'} })
+    record_metadata: Optional[RecordMetadata] = Field(default=None, description="""Provenance metadata about a specific concrete record of information.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
+    id: str = Field(default=..., description="""The logical identifier of the entity in the system of record, e.g. a UUID.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity',
+                       'EvidencePacket',
+                       'CurationDecision',
+                       'EntitySnapshot'],
+         'status': 'Draft'} })
     identifiers: Optional[list[str]] = Field(default=[], description="""Globally-unique business identifiers or accession numbers for the entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity'], 'status': 'Informative'} })
     type: str = Field(default=..., description="""The name of the class that is instantiated by a data object representing the Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity', 'Synonym'], 'status': 'Draft'} })
     label: Optional[str] = Field(default=None, description="""A primary name for the Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity', 'Coding', 'EntitySnapshot'], 'status': 'Draft'} })
-    alternativeLabels: Optional[list[str]] = Field(default=[], description="""Alternative name(s) for the Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity'], 'status': 'Draft'} })
+    alternative_labels: Optional[list[str]] = Field(default=[], description="""Alternative name(s) for the Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity'], 'status': 'Draft'} })
     description: Optional[str] = Field(default=None, description="""A free text description of the Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity', 'Score'], 'status': 'Draft'} })
     extensions: Optional[list[Extension]] = Field(default=[], description="""A list of extensions to the Entity, that allow for capture of information not directly supported by elements defined in the model.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity'], 'status': 'Draft'} })
 
 
-class SieveStudyResult(StudyResult):
+class SieveStudyResult(CuratedEvidence, StudyResult):
     """
     Sieve extension of SEPIO StudyResult.
     """
-    linkml_meta: ClassVar[LinkMLMeta] = LinkMLMeta({'from_schema': 'https://w3id.org/sieve'})
+    linkml_meta: ClassVar[LinkMLMeta] = LinkMLMeta({'from_schema': 'https://w3id.org/sieve', 'mixins': ['CuratedEvidence']})
 
+    rating: Optional[CurationStatus] = Field(default=None, description="""The evidence steward's verdict on this individual evidence item.""", json_schema_extra = { "linkml_meta": {'domain_of': ['CuratedEvidence']} })
+    eco_code: Optional[str] = Field(default=None, description="""Evidence & Conclusion Ontology (ECO) term for this evidence item.""", json_schema_extra = { "linkml_meta": {'domain_of': ['CuratedEvidence']} })
+    eco_label: Optional[str] = Field(default=None, description="""Human-readable label of the ECO term.""", json_schema_extra = { "linkml_meta": {'domain_of': ['CuratedEvidence']} })
     focus: Optional[str] = Field(default=None, description="""A specific subject or experimental unit the data is about.""", json_schema_extra = { "linkml_meta": {'domain_of': ['StudyResult']} })
-    dataItems: Optional[list[DataItem]] = Field(default=[], description="""Data items included in the StudyResult.""", json_schema_extra = { "linkml_meta": {'domain_of': ['StudyResult'], 'status': 'Informative'} })
-    sourceDataSet: Optional[list[DataSet]] = Field(default=[], description="""A larger DataSet from which this content was derived.""", json_schema_extra = { "linkml_meta": {'domain_of': ['StudyResult'], 'status': 'Draft'} })
-    isAbout: Optional[list[str]] = Field(default=[], description="""An entity or concept that the information entity describes/is about.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Informative'} })
+    data_items: Optional[list[DataItem]] = Field(default=[], description="""Data items included in the StudyResult.""", json_schema_extra = { "linkml_meta": {'domain_of': ['StudyResult'], 'status': 'Informative'} })
+    source_data_set: Optional[list[DataSet]] = Field(default=[], description="""A larger DataSet from which this content was derived.""", json_schema_extra = { "linkml_meta": {'domain_of': ['StudyResult'], 'status': 'Draft'} })
+    is_about: Optional[list[str]] = Field(default=[], description="""An entity or concept that the information entity describes/is about.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Informative'} })
     contributions: Optional[list[Contribution]] = Field(default=[], description="""Specific actions taken by an Agent toward the creation, modification, validation, or deprecation of an Information Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity', 'RecordMetadata'], 'status': 'Draft'} })
-    dateAuthored: Optional[str] = Field(default=None, description="""When the information content was generated.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
-    specifiedBy: Optional[list[str]] = Field(default=[], description="""A specification that describes all or part of the process that led to creation of the Information Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
-    derivedFrom: Optional[list[InformationEntity]] = Field(default=[], description="""Another Information Entity from which this one is derived.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
-    reportedIn: Optional[list[str]] = Field(default=[], description="""A document in which the Information Entity is reported.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
+    date_authored: Optional[str] = Field(default=None, description="""When the information content was generated.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
+    specified_by: Optional[list[str]] = Field(default=[], description="""A specification that describes all or part of the process that led to creation of the Information Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
+    derived_from: Optional[list[InformationEntity]] = Field(default=[], description="""Another Information Entity from which this one is derived.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
+    reported_in: Optional[list[str]] = Field(default=[], description="""A document in which the Information Entity is reported.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
     sources: Optional[list[str]] = Field(default=[], description="""A document or other information resource in which the information entity, or evidence supporting it, is reported.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
-    recordMetadata: Optional[RecordMetadata] = Field(default=None, description="""Provenance metadata about a specific concrete record of information.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
-    id: str = Field(default=..., description="""The logical identifier of the entity in the system of record, e.g. a UUID.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity', 'EvidencePacket', 'EntitySnapshot'], 'status': 'Draft'} })
+    record_metadata: Optional[RecordMetadata] = Field(default=None, description="""Provenance metadata about a specific concrete record of information.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
+    id: str = Field(default=..., description="""The logical identifier of the entity in the system of record, e.g. a UUID.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity',
+                       'EvidencePacket',
+                       'CurationDecision',
+                       'EntitySnapshot'],
+         'status': 'Draft'} })
     identifiers: Optional[list[str]] = Field(default=[], description="""Globally-unique business identifiers or accession numbers for the entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity'], 'status': 'Informative'} })
     type: str = Field(default=..., description="""The name of the class that is instantiated by a data object representing the Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity', 'Synonym'], 'status': 'Draft'} })
     label: Optional[str] = Field(default=None, description="""A primary name for the Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity', 'Coding', 'EntitySnapshot'], 'status': 'Draft'} })
-    alternativeLabels: Optional[list[str]] = Field(default=[], description="""Alternative name(s) for the Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity'], 'status': 'Draft'} })
+    alternative_labels: Optional[list[str]] = Field(default=[], description="""Alternative name(s) for the Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity'], 'status': 'Draft'} })
     description: Optional[str] = Field(default=None, description="""A free text description of the Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity', 'Score'], 'status': 'Draft'} })
     extensions: Optional[list[Extension]] = Field(default=[], description="""A list of extensions to the Entity, that allow for capture of information not directly supported by elements defined in the model.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity'], 'status': 'Draft'} })
 
 
-class ConcordanceItem(SieveEvidenceItem):
+class ConcordanceItem(SieveEvidenceItem, CuratedEvidence):
     """
     Evidence from concordance with another knowledge source (ontology, database, terminology). The concordant source contains a statement that aligns with the statement being curated.
     """
     linkml_meta: ClassVar[LinkMLMeta] = LinkMLMeta({'comments': ["Use inherited 'sources' to reference the concordant knowledge "
                       'source.',
-                      "Use inherited 'derivedFrom' if linking to a formal "
+                      "Use inherited 'derived_from' if linking to a formal "
                       'InformationEntity.',
-                      'The sourceSubject/Predicate/Object fields capture the '
+                      'The source_subject/Predicate/Object fields capture the '
                       'concordant assertion.'],
-         'from_schema': 'https://w3id.org/sieve'})
+         'from_schema': 'https://w3id.org/sieve',
+         'mixins': ['CuratedEvidence']})
 
-    sourceName: Optional[str] = Field(default=None, description="""Human-readable name of the concordant source (e.g., \"Disease Ontology\"). Convenience field; formal source can be in inherited 'sources'.""", json_schema_extra = { "linkml_meta": {'domain_of': ['ConcordanceItem']} })
-    sourceId: Optional[str] = Field(default=None, description="""Identifier of the concordant source (e.g., database ID, ontology IRI).""", json_schema_extra = { "linkml_meta": {'domain_of': ['ConcordanceItem']} })
-    sourceVersion: Optional[str] = Field(default=None, description="""Version/release of the concordant source.""", json_schema_extra = { "linkml_meta": {'domain_of': ['ConcordanceItem']} })
-    sourceSubject: Optional[str] = Field(default=None, description="""Subject of the concordant assertion in the source.""", json_schema_extra = { "linkml_meta": {'domain_of': ['ConcordanceItem']} })
-    sourceSubjectLabel: Optional[str] = Field(default=None, description="""Human-readable label of the subject in the source.""", json_schema_extra = { "linkml_meta": {'domain_of': ['ConcordanceItem']} })
-    sourcePredicate: Optional[str] = Field(default=None, description="""Predicate/relationship in the concordant assertion.""", json_schema_extra = { "linkml_meta": {'domain_of': ['ConcordanceItem']} })
-    sourcePredicateLabel: Optional[str] = Field(default=None, description="""Human-readable label of the predicate in the source.""", json_schema_extra = { "linkml_meta": {'domain_of': ['ConcordanceItem']} })
-    sourceObject: Optional[str] = Field(default=None, description="""Object of the concordant assertion in the source.""", json_schema_extra = { "linkml_meta": {'domain_of': ['ConcordanceItem']} })
-    sourceObjectLabel: Optional[str] = Field(default=None, description="""Human-readable label of the object in the source.""", json_schema_extra = { "linkml_meta": {'domain_of': ['ConcordanceItem']} })
-    mappingJustification: Optional[str] = Field(default=None, description="""How entities were mapped between sources (e.g., semapv:LexicalMatching, semapv:ManualMappingCuration). Uses SSSOM mapping justification vocabulary.""", json_schema_extra = { "linkml_meta": {'domain_of': ['ConcordanceItem']} })
-    evidenceItemType: Optional[EvidenceItemType] = Field(default=None, description="""Type of evidence item (for polymorphism).""", json_schema_extra = { "linkml_meta": {'domain_of': ['SieveEvidenceItem']} })
-    isAbout: Optional[list[str]] = Field(default=[], description="""An entity or concept that the information entity describes/is about.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Informative'} })
+    source_name: Optional[str] = Field(default=None, description="""Human-readable name of the concordant source (e.g., \"Disease Ontology\"). Convenience field; formal source can be in inherited 'sources'.""", json_schema_extra = { "linkml_meta": {'domain_of': ['ConcordanceItem']} })
+    source_id: Optional[str] = Field(default=None, description="""Identifier of the concordant source (e.g., database ID, ontology IRI).""", json_schema_extra = { "linkml_meta": {'domain_of': ['ConcordanceItem']} })
+    source_version: Optional[str] = Field(default=None, description="""Version/release of the concordant source.""", json_schema_extra = { "linkml_meta": {'domain_of': ['ConcordanceItem']} })
+    source_subject: Optional[str] = Field(default=None, description="""Subject of the concordant assertion in the source.""", json_schema_extra = { "linkml_meta": {'domain_of': ['ConcordanceItem']} })
+    source_subject_label: Optional[str] = Field(default=None, description="""Human-readable label of the subject in the source.""", json_schema_extra = { "linkml_meta": {'domain_of': ['ConcordanceItem']} })
+    source_predicate: Optional[str] = Field(default=None, description="""Predicate/relationship in the concordant assertion.""", json_schema_extra = { "linkml_meta": {'domain_of': ['ConcordanceItem']} })
+    source_predicate_label: Optional[str] = Field(default=None, description="""Human-readable label of the predicate in the source.""", json_schema_extra = { "linkml_meta": {'domain_of': ['ConcordanceItem']} })
+    source_object: Optional[str] = Field(default=None, description="""Object of the concordant assertion in the source.""", json_schema_extra = { "linkml_meta": {'domain_of': ['ConcordanceItem']} })
+    source_object_label: Optional[str] = Field(default=None, description="""Human-readable label of the object in the source.""", json_schema_extra = { "linkml_meta": {'domain_of': ['ConcordanceItem']} })
+    mapping_justification: Optional[str] = Field(default=None, description="""How entities were mapped between sources (e.g., semapv:LexicalMatching, semapv:ManualMappingCuration). Uses SSSOM mapping justification vocabulary.""", json_schema_extra = { "linkml_meta": {'domain_of': ['ConcordanceItem']} })
+    mapping_set: Optional[str] = Field(default=None, description="""SSSOM mapping-set URI the concordance was drawn from.""", json_schema_extra = { "linkml_meta": {'domain_of': ['ConcordanceItem']} })
+    rating: Optional[CurationStatus] = Field(default=None, description="""The evidence steward's verdict on this individual evidence item.""", json_schema_extra = { "linkml_meta": {'domain_of': ['CuratedEvidence']} })
+    eco_code: Optional[str] = Field(default=None, description="""Evidence & Conclusion Ontology (ECO) term for this evidence item.""", json_schema_extra = { "linkml_meta": {'domain_of': ['CuratedEvidence']} })
+    eco_label: Optional[str] = Field(default=None, description="""Human-readable label of the ECO term.""", json_schema_extra = { "linkml_meta": {'domain_of': ['CuratedEvidence']} })
+    evidence_item_type: Optional[EvidenceItemType] = Field(default=None, description="""Type of evidence item (for polymorphism).""", json_schema_extra = { "linkml_meta": {'domain_of': ['SieveEvidenceItem']} })
+    is_about: Optional[list[str]] = Field(default=[], description="""An entity or concept that the information entity describes/is about.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Informative'} })
     contributions: Optional[list[Contribution]] = Field(default=[], description="""Specific actions taken by an Agent toward the creation, modification, validation, or deprecation of an Information Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity', 'RecordMetadata'], 'status': 'Draft'} })
-    dateAuthored: Optional[str] = Field(default=None, description="""When the information content was generated.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
-    specifiedBy: Optional[list[str]] = Field(default=[], description="""A specification that describes all or part of the process that led to creation of the Information Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
-    derivedFrom: Optional[list[InformationEntity]] = Field(default=[], description="""Another Information Entity from which this one is derived.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
-    reportedIn: Optional[list[str]] = Field(default=[], description="""A document in which the Information Entity is reported.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
+    date_authored: Optional[str] = Field(default=None, description="""When the information content was generated.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
+    specified_by: Optional[list[str]] = Field(default=[], description="""A specification that describes all or part of the process that led to creation of the Information Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
+    derived_from: Optional[list[InformationEntity]] = Field(default=[], description="""Another Information Entity from which this one is derived.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
+    reported_in: Optional[list[str]] = Field(default=[], description="""A document in which the Information Entity is reported.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
     sources: Optional[list[str]] = Field(default=[], description="""A document or other information resource in which the information entity, or evidence supporting it, is reported.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
-    recordMetadata: Optional[RecordMetadata] = Field(default=None, description="""Provenance metadata about a specific concrete record of information.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
-    id: str = Field(default=..., description="""The logical identifier of the entity in the system of record, e.g. a UUID.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity', 'EvidencePacket', 'EntitySnapshot'], 'status': 'Draft'} })
+    record_metadata: Optional[RecordMetadata] = Field(default=None, description="""Provenance metadata about a specific concrete record of information.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
+    id: str = Field(default=..., description="""The logical identifier of the entity in the system of record, e.g. a UUID.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity',
+                       'EvidencePacket',
+                       'CurationDecision',
+                       'EntitySnapshot'],
+         'status': 'Draft'} })
     identifiers: Optional[list[str]] = Field(default=[], description="""Globally-unique business identifiers or accession numbers for the entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity'], 'status': 'Informative'} })
     type: str = Field(default=..., description="""The name of the class that is instantiated by a data object representing the Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity', 'Synonym'], 'status': 'Draft'} })
     label: Optional[str] = Field(default=None, description="""A primary name for the Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity', 'Coding', 'EntitySnapshot'], 'status': 'Draft'} })
-    alternativeLabels: Optional[list[str]] = Field(default=[], description="""Alternative name(s) for the Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity'], 'status': 'Draft'} })
+    alternative_labels: Optional[list[str]] = Field(default=[], description="""Alternative name(s) for the Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity'], 'status': 'Draft'} })
     description: Optional[str] = Field(default=None, description="""A free text description of the Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity', 'Score'], 'status': 'Draft'} })
     extensions: Optional[list[Extension]] = Field(default=[], description="""A list of extensions to the Entity, that allow for capture of information not directly supported by elements defined in the model.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity'], 'status': 'Draft'} })
 
 
-class ComputationalResult(DataItem):
+class ComputationalResult(CuratedEvidence, DataItem):
     """
-    Evidence from a computational method or algorithm. Extends SEPIO DataItem. The computed score/result is stored in inherited 'value'. Method details can be referenced via inherited 'specifiedBy' or the convenience attributes below.
+    Evidence from a computational method or algorithm. Extends SEPIO DataItem. The computed score/result is stored in inherited 'value'. Method details can be referenced via inherited 'specified_by' or the convenience attributes below.
     """
     linkml_meta: ClassVar[LinkMLMeta] = LinkMLMeta({'comments': ["Use inherited 'value' for the primary result (e.g., confidence "
                       'score).',
                       "Use inherited 'subtype' (Coding) to categorize the computation "
                       'type.',
-                      "Use inherited 'specifiedBy' to reference formal method "
+                      "Use inherited 'specified_by' to reference formal method "
                       'specifications.'],
-         'from_schema': 'https://w3id.org/sieve'})
+         'from_schema': 'https://w3id.org/sieve',
+         'mixins': ['CuratedEvidence']})
 
-    methodName: Optional[str] = Field(default=None, description="""Human-readable name of the computational method. Convenience field; formal method can be in inherited 'specifiedBy'.""", json_schema_extra = { "linkml_meta": {'domain_of': ['ComputationalResult']} })
-    methodId: Optional[str] = Field(default=None, description="""Identifier for the method (e.g., OBI term). Convenience field; formal method can be in inherited 'specifiedBy'.""", json_schema_extra = { "linkml_meta": {'domain_of': ['ComputationalResult']} })
+    method_name: Optional[str] = Field(default=None, description="""Human-readable name of the computational method. Convenience field; formal method can be in inherited 'specified_by'.""", json_schema_extra = { "linkml_meta": {'domain_of': ['ComputationalResult']} })
+    method_id: Optional[str] = Field(default=None, description="""Identifier for the method (e.g., OBI term). Convenience field; formal method can be in inherited 'specified_by'.""", json_schema_extra = { "linkml_meta": {'domain_of': ['ComputationalResult']} })
     parameters: Optional[str] = Field(default=None, description="""Method parameters (as JSON string or key=value format).""", json_schema_extra = { "linkml_meta": {'domain_of': ['ComputationalResult']} })
-    softwareVersion: Optional[str] = Field(default=None, description="""Version of software/tool used.""", json_schema_extra = { "linkml_meta": {'domain_of': ['ComputationalResult']} })
+    software_version: Optional[str] = Field(default=None, description="""Version of software/tool used.""", json_schema_extra = { "linkml_meta": {'domain_of': ['ComputationalResult']} })
+    rating: Optional[CurationStatus] = Field(default=None, description="""The evidence steward's verdict on this individual evidence item.""", json_schema_extra = { "linkml_meta": {'domain_of': ['CuratedEvidence']} })
+    eco_code: Optional[str] = Field(default=None, description="""Evidence & Conclusion Ontology (ECO) term for this evidence item.""", json_schema_extra = { "linkml_meta": {'domain_of': ['CuratedEvidence']} })
+    eco_label: Optional[str] = Field(default=None, description="""Human-readable label of the ECO term.""", json_schema_extra = { "linkml_meta": {'domain_of': ['CuratedEvidence']} })
     subtype: Optional[Coding] = Field(default=None, description="""A specific type of data the DataItem represents.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Document', 'DataItem', 'DataSet', 'Activity', 'Agent'],
          'status': 'Informative'} })
     value: str = Field(default=..., description="""The value of the data item.""", json_schema_extra = { "linkml_meta": {'domain_of': ['DataItem',
@@ -1003,50 +1140,61 @@ class ComputationalResult(DataItem):
                        'Synonym'],
          'status': 'Informative'} })
     unit: Optional[Coding] = Field(default=None, description="""A unit of measure for the value.""", json_schema_extra = { "linkml_meta": {'domain_of': ['DataItem'], 'status': 'Informative'} })
-    isAbout: Optional[list[str]] = Field(default=[], description="""An entity or concept that the information entity describes/is about.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Informative'} })
+    is_about: Optional[list[str]] = Field(default=[], description="""An entity or concept that the information entity describes/is about.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Informative'} })
     contributions: Optional[list[Contribution]] = Field(default=[], description="""Specific actions taken by an Agent toward the creation, modification, validation, or deprecation of an Information Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity', 'RecordMetadata'], 'status': 'Draft'} })
-    dateAuthored: Optional[str] = Field(default=None, description="""When the information content was generated.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
-    specifiedBy: Optional[list[str]] = Field(default=[], description="""A specification that describes all or part of the process that led to creation of the Information Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
-    derivedFrom: Optional[list[InformationEntity]] = Field(default=[], description="""Another Information Entity from which this one is derived.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
-    reportedIn: Optional[list[str]] = Field(default=[], description="""A document in which the Information Entity is reported.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
+    date_authored: Optional[str] = Field(default=None, description="""When the information content was generated.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
+    specified_by: Optional[list[str]] = Field(default=[], description="""A specification that describes all or part of the process that led to creation of the Information Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
+    derived_from: Optional[list[InformationEntity]] = Field(default=[], description="""Another Information Entity from which this one is derived.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
+    reported_in: Optional[list[str]] = Field(default=[], description="""A document in which the Information Entity is reported.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
     sources: Optional[list[str]] = Field(default=[], description="""A document or other information resource in which the information entity, or evidence supporting it, is reported.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
-    recordMetadata: Optional[RecordMetadata] = Field(default=None, description="""Provenance metadata about a specific concrete record of information.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
-    id: str = Field(default=..., description="""The logical identifier of the entity in the system of record, e.g. a UUID.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity', 'EvidencePacket', 'EntitySnapshot'], 'status': 'Draft'} })
+    record_metadata: Optional[RecordMetadata] = Field(default=None, description="""Provenance metadata about a specific concrete record of information.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
+    id: str = Field(default=..., description="""The logical identifier of the entity in the system of record, e.g. a UUID.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity',
+                       'EvidencePacket',
+                       'CurationDecision',
+                       'EntitySnapshot'],
+         'status': 'Draft'} })
     identifiers: Optional[list[str]] = Field(default=[], description="""Globally-unique business identifiers or accession numbers for the entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity'], 'status': 'Informative'} })
     type: str = Field(default=..., description="""The name of the class that is instantiated by a data object representing the Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity', 'Synonym'], 'status': 'Draft'} })
     label: Optional[str] = Field(default=None, description="""A primary name for the Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity', 'Coding', 'EntitySnapshot'], 'status': 'Draft'} })
-    alternativeLabels: Optional[list[str]] = Field(default=[], description="""Alternative name(s) for the Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity'], 'status': 'Draft'} })
+    alternative_labels: Optional[list[str]] = Field(default=[], description="""Alternative name(s) for the Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity'], 'status': 'Draft'} })
     description: Optional[str] = Field(default=None, description="""A free text description of the Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity', 'Score'], 'status': 'Draft'} })
     extensions: Optional[list[Extension]] = Field(default=[], description="""A list of extensions to the Entity, that allow for capture of information not directly supported by elements defined in the model.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity'], 'status': 'Draft'} })
 
 
-class AgentContribution(SieveEvidenceItem):
+class AgentContribution(SieveEvidenceItem, CuratedEvidence):
     """
     Evidence from any human or organizational contribution. Captures orthogonal dimensions for scoring: who contributed (trust level), how they contributed (channel), and what type of contribution. Replaces the narrower ExpertStatement class.
     """
-    linkml_meta: ClassVar[LinkMLMeta] = LinkMLMeta({'from_schema': 'https://w3id.org/sieve'})
+    linkml_meta: ClassVar[LinkMLMeta] = LinkMLMeta({'from_schema': 'https://w3id.org/sieve', 'mixins': ['CuratedEvidence']})
 
     contributor: Optional[Agent] = Field(default=None, description="""The agent (person or organization) who made the contribution.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Contribution', 'AgentContribution']} })
-    trustLevel: Optional[TrustLevel] = Field(default=None, description="""Level of trust/authority assigned to the contributor. Key dimension for evidence scoring.""", json_schema_extra = { "linkml_meta": {'domain_of': ['AgentContribution']} })
+    trust_level: Optional[TrustLevel] = Field(default=None, description="""Level of trust/authority assigned to the contributor. Key dimension for evidence scoring.""", json_schema_extra = { "linkml_meta": {'domain_of': ['AgentContribution']} })
     channel: Optional[ContributionChannel] = Field(default=None, description="""How the contribution was communicated/submitted. Affects traceability and reliability scoring.""", json_schema_extra = { "linkml_meta": {'domain_of': ['AgentContribution']} })
-    contributionType: Optional[ContributionType] = Field(default=None, description="""The nature of the contribution (suggestion, review, decision, etc.). Affects evidence weight.""", json_schema_extra = { "linkml_meta": {'domain_of': ['AgentContribution']} })
+    contribution_type: Optional[ContributionType] = Field(default=None, description="""The nature of the contribution (suggestion, review, decision, etc.). Affects evidence weight.""", json_schema_extra = { "linkml_meta": {'domain_of': ['AgentContribution']} })
     reference: Optional[str] = Field(default=None, description="""URL or identifier for traceability (issue tracker link, email thread, submission ID, etc.).""", json_schema_extra = { "linkml_meta": {'domain_of': ['AgentContribution']} })
     content: Optional[str] = Field(default=None, description="""The actual content of the contribution (what they said/provided).""", json_schema_extra = { "linkml_meta": {'domain_of': ['AgentContribution']} })
-    date: Optional[date] = Field(default=None, description="""When the contribution was made.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Activity', 'AgentContribution']} })
-    evidenceItemType: Optional[EvidenceItemType] = Field(default=None, description="""Type of evidence item (for polymorphism).""", json_schema_extra = { "linkml_meta": {'domain_of': ['SieveEvidenceItem']} })
-    isAbout: Optional[list[str]] = Field(default=[], description="""An entity or concept that the information entity describes/is about.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Informative'} })
+    date: Optional[str] = Field(default=None, description="""When the contribution was made (ISO 8601 string).""", json_schema_extra = { "linkml_meta": {'domain_of': ['Activity', 'AgentContribution']} })
+    rating: Optional[CurationStatus] = Field(default=None, description="""The evidence steward's verdict on this individual evidence item.""", json_schema_extra = { "linkml_meta": {'domain_of': ['CuratedEvidence']} })
+    eco_code: Optional[str] = Field(default=None, description="""Evidence & Conclusion Ontology (ECO) term for this evidence item.""", json_schema_extra = { "linkml_meta": {'domain_of': ['CuratedEvidence']} })
+    eco_label: Optional[str] = Field(default=None, description="""Human-readable label of the ECO term.""", json_schema_extra = { "linkml_meta": {'domain_of': ['CuratedEvidence']} })
+    evidence_item_type: Optional[EvidenceItemType] = Field(default=None, description="""Type of evidence item (for polymorphism).""", json_schema_extra = { "linkml_meta": {'domain_of': ['SieveEvidenceItem']} })
+    is_about: Optional[list[str]] = Field(default=[], description="""An entity or concept that the information entity describes/is about.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Informative'} })
     contributions: Optional[list[Contribution]] = Field(default=[], description="""Specific actions taken by an Agent toward the creation, modification, validation, or deprecation of an Information Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity', 'RecordMetadata'], 'status': 'Draft'} })
-    dateAuthored: Optional[str] = Field(default=None, description="""When the information content was generated.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
-    specifiedBy: Optional[list[str]] = Field(default=[], description="""A specification that describes all or part of the process that led to creation of the Information Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
-    derivedFrom: Optional[list[InformationEntity]] = Field(default=[], description="""Another Information Entity from which this one is derived.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
-    reportedIn: Optional[list[str]] = Field(default=[], description="""A document in which the Information Entity is reported.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
+    date_authored: Optional[str] = Field(default=None, description="""When the information content was generated.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
+    specified_by: Optional[list[str]] = Field(default=[], description="""A specification that describes all or part of the process that led to creation of the Information Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
+    derived_from: Optional[list[InformationEntity]] = Field(default=[], description="""Another Information Entity from which this one is derived.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
+    reported_in: Optional[list[str]] = Field(default=[], description="""A document in which the Information Entity is reported.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
     sources: Optional[list[str]] = Field(default=[], description="""A document or other information resource in which the information entity, or evidence supporting it, is reported.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
-    recordMetadata: Optional[RecordMetadata] = Field(default=None, description="""Provenance metadata about a specific concrete record of information.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
-    id: str = Field(default=..., description="""The logical identifier of the entity in the system of record, e.g. a UUID.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity', 'EvidencePacket', 'EntitySnapshot'], 'status': 'Draft'} })
+    record_metadata: Optional[RecordMetadata] = Field(default=None, description="""Provenance metadata about a specific concrete record of information.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
+    id: str = Field(default=..., description="""The logical identifier of the entity in the system of record, e.g. a UUID.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity',
+                       'EvidencePacket',
+                       'CurationDecision',
+                       'EntitySnapshot'],
+         'status': 'Draft'} })
     identifiers: Optional[list[str]] = Field(default=[], description="""Globally-unique business identifiers or accession numbers for the entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity'], 'status': 'Informative'} })
     type: str = Field(default=..., description="""The name of the class that is instantiated by a data object representing the Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity', 'Synonym'], 'status': 'Draft'} })
     label: Optional[str] = Field(default=None, description="""A primary name for the Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity', 'Coding', 'EntitySnapshot'], 'status': 'Draft'} })
-    alternativeLabels: Optional[list[str]] = Field(default=[], description="""Alternative name(s) for the Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity'], 'status': 'Draft'} })
+    alternative_labels: Optional[list[str]] = Field(default=[], description="""Alternative name(s) for the Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity'], 'status': 'Draft'} })
     description: Optional[str] = Field(default=None, description="""A free text description of the Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity', 'Score'], 'status': 'Draft'} })
     extensions: Optional[list[Extension]] = Field(default=[], description="""A list of extensions to the Entity, that allow for capture of information not directly supported by elements defined in the model.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity'], 'status': 'Draft'} })
 
@@ -1059,19 +1207,45 @@ class CurationActivity(Contribution):
 
     timestamp: Optional[datetime ] = Field(default=None, description="""When the activity was performed (datetime precision). Use inherited 'date' for date-only precision.""", json_schema_extra = { "linkml_meta": {'domain_of': ['CurationActivity']} })
     used: Optional[list[str]] = Field(default=[], description="""Inputs used by this activity (e.g., prompt versions, tools). Simplified alternative to SEPIO Activity.input for string-typed inputs.""", json_schema_extra = { "linkml_meta": {'domain_of': ['CurationActivity']} })
+    pull_request: Optional[str] = Field(default=None, description="""GitHub pull request URL associated with this activity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['CurationActivity']} })
+    issue: Optional[str] = Field(default=None, description="""GitHub issue URL associated with this activity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['CurationActivity']} })
+    created_with: Optional[str] = Field(default=None, description="""Tool or software used (e.g., a Protégé URI).""", json_schema_extra = { "linkml_meta": {'domain_of': ['CurationActivity']} })
     contributor: Optional[Agent] = Field(default=None, description="""The Agent that made the contribution.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Contribution', 'AgentContribution'], 'status': 'Draft'} })
-    activityType: Optional[list[Coding]] = Field(default=[], description="""The specific type of activity performed or role played by an agent in making the contribution.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Contribution'], 'status': 'Draft'} })
+    activity_type: Optional[list[Coding]] = Field(default=[], description="""The specific type of activity performed or role played by an agent in making the contribution.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Contribution'], 'status': 'Draft'} })
     subtype: Optional[Coding] = Field(default=None, description="""A specific type of activity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Document', 'DataItem', 'DataSet', 'Activity', 'Agent'],
          'status': 'Informative'} })
-    date: Optional[date] = Field(default=None, description="""The date that the Activity was completed.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Activity', 'AgentContribution'], 'status': 'Draft'} })
-    performedBy: Optional[list[Agent]] = Field(default=[], description="""An Agent who participated in executing the Activity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Activity'], 'status': 'Draft'} })
-    id: str = Field(default=..., description="""The logical identifier of the entity in the system of record, e.g. a UUID.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity', 'EvidencePacket', 'EntitySnapshot'], 'status': 'Draft'} })
+    date: Optional[str] = Field(default=None, description="""The date that the Activity was completed (ISO 8601 string).""", json_schema_extra = { "linkml_meta": {'domain_of': ['Activity', 'AgentContribution'], 'status': 'Draft'} })
+    performed_by: Optional[list[Agent]] = Field(default=[], description="""An Agent who participated in executing the Activity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Activity'], 'status': 'Draft'} })
+    id: str = Field(default=..., description="""The logical identifier of the entity in the system of record, e.g. a UUID.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity',
+                       'EvidencePacket',
+                       'CurationDecision',
+                       'EntitySnapshot'],
+         'status': 'Draft'} })
     identifiers: Optional[list[str]] = Field(default=[], description="""Globally-unique business identifiers or accession numbers for the entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity'], 'status': 'Informative'} })
     type: str = Field(default=..., description="""The name of the class that is instantiated by a data object representing the Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity', 'Synonym'], 'status': 'Draft'} })
     label: Optional[str] = Field(default=None, description="""A primary name for the Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity', 'Coding', 'EntitySnapshot'], 'status': 'Draft'} })
-    alternativeLabels: Optional[list[str]] = Field(default=[], description="""Alternative name(s) for the Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity'], 'status': 'Draft'} })
+    alternative_labels: Optional[list[str]] = Field(default=[], description="""Alternative name(s) for the Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity'], 'status': 'Draft'} })
     description: Optional[str] = Field(default=None, description="""A free text description of the Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity', 'Score'], 'status': 'Draft'} })
     extensions: Optional[list[Extension]] = Field(default=[], description="""A list of extensions to the Entity, that allow for capture of information not directly supported by elements defined in the model.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity'], 'status': 'Draft'} })
+
+
+class CurationDecision(ConfiguredBaseModel):
+    """
+    A curator's decision on an EvidencePacket. One row per decision, preserving history (richer than a single curated_by activity). Sieve-specific.
+    """
+    linkml_meta: ClassVar[LinkMLMeta] = LinkMLMeta({'from_schema': 'https://w3id.org/sieve'})
+
+    id: str = Field(default=..., json_schema_extra = { "linkml_meta": {'domain_of': ['Entity',
+                       'EvidencePacket',
+                       'CurationDecision',
+                       'EntitySnapshot']} })
+    packet_id: str = Field(default=..., description="""Reference to the EvidencePacket.id this decision applies to.""", json_schema_extra = { "linkml_meta": {'domain_of': ['CurationDecision']} })
+    curator: str = Field(default=..., description="""ORCID of the deciding curator.""", json_schema_extra = { "linkml_meta": {'domain_of': ['CurationDecision']} })
+    curator_name: Optional[str] = Field(default=None, json_schema_extra = { "linkml_meta": {'domain_of': ['CurationDecision']} })
+    decision: DecisionType = Field(default=..., json_schema_extra = { "linkml_meta": {'domain_of': ['CurationDecision']} })
+    rationale: Optional[str] = Field(default=None, description="""Explanation for the decision (required for rejections).""", json_schema_extra = { "linkml_meta": {'domain_of': ['CurationDecision']} })
+    certainty: Optional[float] = Field(default=None, description="""Curator's confidence in this decision (0-1).""", ge=0, le=1, json_schema_extra = { "linkml_meta": {'domain_of': ['CurationDecision']} })
+    decided_at: datetime  = Field(default=..., json_schema_extra = { "linkml_meta": {'domain_of': ['CurationDecision']} })
 
 
 class Score(ConfiguredBaseModel):
@@ -1124,7 +1298,10 @@ class EntitySnapshot(ConfiguredBaseModel):
     """
     linkml_meta: ClassVar[LinkMLMeta] = LinkMLMeta({'from_schema': 'https://w3id.org/monarch-initiative/mondo-ai'})
 
-    id: str = Field(default=..., description="""Source entity identifier (e.g., OMIM:123456)""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity', 'EvidencePacket', 'EntitySnapshot']} })
+    id: str = Field(default=..., description="""Source entity identifier (e.g., OMIM:123456)""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity',
+                       'EvidencePacket',
+                       'CurationDecision',
+                       'EntitySnapshot']} })
     label: Optional[str] = Field(default=None, description="""Primary label/name of the entity""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity', 'Coding', 'EntitySnapshot']} })
     synonyms: Optional[list[Synonym]] = Field(default=[], description="""List of synonyms for this entity""", json_schema_extra = { "linkml_meta": {'domain_of': ['EntitySnapshot']} })
     definition: Optional[str] = Field(default=None, description="""Definition text""", json_schema_extra = { "linkml_meta": {'domain_of': ['EntitySnapshot']} })
@@ -1133,6 +1310,50 @@ class EntitySnapshot(ConfiguredBaseModel):
     deprecated: Optional[bool] = Field(default=None, description="""Whether this entity is deprecated/obsolete""", json_schema_extra = { "linkml_meta": {'domain_of': ['EntitySnapshot']} })
     definition_orcids: Optional[list[str]] = Field(default=[], description="""ORCID identifiers found in definition sources""", json_schema_extra = { "linkml_meta": {'domain_of': ['EntitySnapshot']} })
     definition_pmids: Optional[list[str]] = Field(default=[], description="""PMID identifiers found in definition sources""", json_schema_extra = { "linkml_meta": {'domain_of': ['EntitySnapshot']} })
+
+
+class TextMiningResult(SieveDataItem):
+    """
+    Evidence extracted from document text by a text-mining or LLM pipeline (the SIEVE \"C\" shape). Inherits `value` (the extracted span text) from DataItem and `rating`/`eco_code`/`eco_label` from the CuratedEvidence mixin. Every extraction slot below is optional, so an instance with only `value` is indistinguishable from a plain evidence item -- \"A stays valid\".
+    """
+    linkml_meta: ClassVar[LinkMLMeta] = LinkMLMeta({'from_schema': 'https://w3id.org/monarch-initiative/mondo-ai'})
+
+    extraction_score: Optional[float] = Field(default=None, description="""Confidence of the extraction (0-1).""", ge=0, le=1, json_schema_extra = { "linkml_meta": {'domain_of': ['TextMiningResult']} })
+    document_section: Optional[str] = Field(default=None, description="""The document section the span was drawn from (e.g. \"Abstract\").""", json_schema_extra = { "linkml_meta": {'domain_of': ['TextMiningResult']} })
+    text_location: Optional[str] = Field(default=None, description="""Location of the span within the document (free-text for now).""", json_schema_extra = { "linkml_meta": {'domain_of': ['TextMiningResult']} })
+    extraction_method: Optional[str] = Field(default=None, description="""The method or model that produced the extraction.""", json_schema_extra = { "linkml_meta": {'domain_of': ['TextMiningResult']} })
+    rating: Optional[CurationStatus] = Field(default=None, description="""The evidence steward's verdict on this individual evidence item.""", json_schema_extra = { "linkml_meta": {'domain_of': ['CuratedEvidence']} })
+    eco_code: Optional[str] = Field(default=None, description="""Evidence & Conclusion Ontology (ECO) term for this evidence item.""", json_schema_extra = { "linkml_meta": {'domain_of': ['CuratedEvidence']} })
+    eco_label: Optional[str] = Field(default=None, description="""Human-readable label of the ECO term.""", json_schema_extra = { "linkml_meta": {'domain_of': ['CuratedEvidence']} })
+    subtype: Optional[Coding] = Field(default=None, description="""A specific type of data the DataItem represents.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Document', 'DataItem', 'DataSet', 'Activity', 'Agent'],
+         'status': 'Informative'} })
+    value: str = Field(default=..., description="""The value of the data item.""", json_schema_extra = { "linkml_meta": {'domain_of': ['DataItem',
+                       'Qualifier',
+                       'Expression',
+                       'Extension',
+                       'Score',
+                       'Synonym'],
+         'status': 'Informative'} })
+    unit: Optional[Coding] = Field(default=None, description="""A unit of measure for the value.""", json_schema_extra = { "linkml_meta": {'domain_of': ['DataItem'], 'status': 'Informative'} })
+    is_about: Optional[list[str]] = Field(default=[], description="""An entity or concept that the information entity describes/is about.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Informative'} })
+    contributions: Optional[list[Contribution]] = Field(default=[], description="""Specific actions taken by an Agent toward the creation, modification, validation, or deprecation of an Information Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity', 'RecordMetadata'], 'status': 'Draft'} })
+    date_authored: Optional[str] = Field(default=None, description="""When the information content was generated.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
+    specified_by: Optional[list[str]] = Field(default=[], description="""A specification that describes all or part of the process that led to creation of the Information Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
+    derived_from: Optional[list[InformationEntity]] = Field(default=[], description="""Another Information Entity from which this one is derived.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
+    reported_in: Optional[list[str]] = Field(default=[], description="""A document in which the Information Entity is reported.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
+    sources: Optional[list[str]] = Field(default=[], description="""A document or other information resource in which the information entity, or evidence supporting it, is reported.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
+    record_metadata: Optional[RecordMetadata] = Field(default=None, description="""Provenance metadata about a specific concrete record of information.""", json_schema_extra = { "linkml_meta": {'domain_of': ['InformationEntity'], 'status': 'Draft'} })
+    id: str = Field(default=..., description="""The logical identifier of the entity in the system of record, e.g. a UUID.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity',
+                       'EvidencePacket',
+                       'CurationDecision',
+                       'EntitySnapshot'],
+         'status': 'Draft'} })
+    identifiers: Optional[list[str]] = Field(default=[], description="""Globally-unique business identifiers or accession numbers for the entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity'], 'status': 'Informative'} })
+    type: str = Field(default=..., description="""The name of the class that is instantiated by a data object representing the Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity', 'Synonym'], 'status': 'Draft'} })
+    label: Optional[str] = Field(default=None, description="""A primary name for the Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity', 'Coding', 'EntitySnapshot'], 'status': 'Draft'} })
+    alternative_labels: Optional[list[str]] = Field(default=[], description="""Alternative name(s) for the Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity'], 'status': 'Draft'} })
+    description: Optional[str] = Field(default=None, description="""A free text description of the Entity.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity', 'Score'], 'status': 'Draft'} })
+    extensions: Optional[list[Extension]] = Field(default=[], description="""A list of extensions to the Entity, that allow for capture of information not directly supported by elements defined in the model.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Entity'], 'status': 'Draft'} })
 
 
 class Synonym(ConfiguredBaseModel):
@@ -1190,6 +1411,7 @@ StudyGroup.model_rebuild()
 EvidencePacket.model_rebuild()
 SieveStatement.model_rebuild()
 SieveEvidenceLine.model_rebuild()
+CuratedEvidence.model_rebuild()
 SieveEvidenceItem.model_rebuild()
 SieveDataItem.model_rebuild()
 SieveDocument.model_rebuild()
@@ -1198,9 +1420,11 @@ ConcordanceItem.model_rebuild()
 ComputationalResult.model_rebuild()
 AgentContribution.model_rebuild()
 CurationActivity.model_rebuild()
+CurationDecision.model_rebuild()
 Score.model_rebuild()
 EvidenceSynthesis.model_rebuild()
 ResourceSnapshot.model_rebuild()
 EntitySnapshot.model_rebuild()
+TextMiningResult.model_rebuild()
 Synonym.model_rebuild()
 EntityMapping.model_rebuild()

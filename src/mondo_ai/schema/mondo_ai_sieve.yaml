@@ -22,7 +22,7 @@ prefixes:
 
 imports:
   - linkml:types
-  - sieve_sepio
+  - sieve
 
 default_range: string
 default_prefix: mondoai
@@ -108,6 +108,31 @@ classes:
         range: string
         multivalued: true
         description: PMID identifiers found in definition sources
+
+  TextMiningResult:
+    is_a: SieveDataItem
+    description: >-
+      Evidence extracted from document text by a text-mining or LLM pipeline
+      (the SIEVE "C" shape). Inherits `value` (the extracted span text) from
+      DataItem and `rating`/`eco_code`/`eco_label` from the CuratedEvidence
+      mixin. Every extraction slot below is optional, so an instance with only
+      `value` is indistinguishable from a plain evidence item -- "A stays valid".
+    attributes:
+      extraction_score:
+        range: float
+        minimum_value: 0
+        maximum_value: 1
+        description: Confidence of the extraction (0-1).
+      document_section:
+        range: string
+        description: The document section the span was drawn from (e.g. "Abstract").
+      text_location:
+        range: string
+        description: Location of the span within the document (free-text for now).
+      extraction_method:
+        range: string
+        description: The method or model that produced the extraction.
+
 
   Synonym:
     description: A synonym with scope and source information.

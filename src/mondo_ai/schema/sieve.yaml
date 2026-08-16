@@ -67,7 +67,7 @@ classes:
         ifabsent: string(UNREVIEWED)
         description: Current curation workflow status.
 
-      hasEvidenceLines:
+      has_evidence_lines:
         range: SieveEvidenceLine
         multivalued: true
         inlined_as_list: true
@@ -95,17 +95,17 @@ classes:
   SieveStatement:
     description: >-
       Sieve extension of SEPIO Statement. A subject-predicate-object assertion
-      being curated. Inherits subject, predicate (Coding), object, statementText,
+      being curated. Inherits subject, predicate (Coding), object, statement_text,
       and evidence-linking attributes from SEPIO Statement. Adds human-readable
       labels for subject and object. Evidence lines are kept on the EvidencePacket
       container, not nested here.
     is_a: Statement
     attributes:
-      subjectLabel:
+      subject_label:
         range: string
         description: Human-readable label for the subject.
 
-      objectLabel:
+      object_label:
         range: string
         description: Human-readable label for the object.
 
@@ -126,25 +126,46 @@ classes:
   # Evidence Items (extends SEPIO InformationEntity)
   # ===========================================================================
 
+  CuratedEvidence:
+    mixin: true
+    description: >-
+      Curation-workflow slots grafted onto every Sieve evidence item: a steward's
+      per-item verdict and an explicit ECO hook. (sieve-specific; not SEPIO)
+    attributes:
+      rating:
+        range: CurationStatus
+        description: The evidence steward's verdict on this individual evidence item.
+      eco_code:
+        range: uriorcurie
+        description: Evidence & Conclusion Ontology (ECO) term for this evidence item.
+      eco_label:
+        range: string
+        description: Human-readable label of the ECO term.
+
+
   SieveEvidenceItem:
     description: >-
       Base class for Sieve-specific evidence items. Extends SEPIO
       InformationEntity.
     is_a: InformationEntity
     attributes:
-      evidenceItemType:
+      evidence_item_type:
         range: EvidenceItemType
         description: Type of evidence item (for polymorphism).
 
 
   SieveDataItem:
     is_a: DataItem
+    mixins:
+      - CuratedEvidence
     description: >-
       Sieve extension of SEPIO DataItem.
 
 
   SieveDocument:
     is_a: Document
+    mixins:
+      - CuratedEvidence
     description: >-
       Sieve extension of SEPIO Document. Adds quote fields.
     attributes:
@@ -152,108 +173,120 @@ classes:
         range: string
         description: Relevant quote from the document.
 
-      quoteLocation:
+      quote_location:
         range: string
         description: Location of quote (page, section, figure).
 
 
   SieveStudyResult:
     is_a: StudyResult
+    mixins:
+      - CuratedEvidence
     description: >-
       Sieve extension of SEPIO StudyResult.
 
 
   ConcordanceItem:
     is_a: SieveEvidenceItem
+    mixins:
+      - CuratedEvidence
     description: >-
       Evidence from concordance with another knowledge source (ontology,
       database, terminology). The concordant source contains a statement
       that aligns with the statement being curated.
     comments:
       - "Use inherited 'sources' to reference the concordant knowledge source."
-      - "Use inherited 'derivedFrom' if linking to a formal InformationEntity."
-      - "The sourceSubject/Predicate/Object fields capture the concordant assertion."
+      - "Use inherited 'derived_from' if linking to a formal InformationEntity."
+      - "The source_subject/Predicate/Object fields capture the concordant assertion."
     attributes:
-      sourceName:
+      source_name:
         range: string
         description: >-
           Human-readable name of the concordant source (e.g., "Disease Ontology").
           Convenience field; formal source can be in inherited 'sources'.
 
-      sourceId:
+      source_id:
         range: uriorcurie
         description: Identifier of the concordant source (e.g., database ID, ontology IRI).
 
-      sourceVersion:
+      source_version:
         range: string
         description: Version/release of the concordant source.
 
-      sourceSubject:
+      source_subject:
         range: uriorcurie
         description: Subject of the concordant assertion in the source.
 
-      sourceSubjectLabel:
+      source_subject_label:
         range: string
         description: Human-readable label of the subject in the source.
 
-      sourcePredicate:
+      source_predicate:
         range: uriorcurie
         description: Predicate/relationship in the concordant assertion.
 
-      sourcePredicateLabel:
+      source_predicate_label:
         range: string
         description: Human-readable label of the predicate in the source.
 
-      sourceObject:
+      source_object:
         range: uriorcurie
         description: Object of the concordant assertion in the source.
 
-      sourceObjectLabel:
+      source_object_label:
         range: string
         description: Human-readable label of the object in the source.
 
-      mappingJustification:
+      mapping_justification:
         range: uriorcurie
         description: >-
           How entities were mapped between sources (e.g., semapv:LexicalMatching,
           semapv:ManualMappingCuration). Uses SSSOM mapping justification vocabulary.
 
+      mapping_set:
+        range: uri
+        description: SSSOM mapping-set URI the concordance was drawn from.
+
 
   ComputationalResult:
     is_a: DataItem
+    mixins:
+      - CuratedEvidence
     description: >-
       Evidence from a computational method or algorithm. Extends SEPIO
       DataItem. The computed score/result is stored in inherited 'value'.
-      Method details can be referenced via inherited 'specifiedBy' or
+      Method details can be referenced via inherited 'specified_by' or
       the convenience attributes below.
     comments:
       - "Use inherited 'value' for the primary result (e.g., confidence score)."
       - "Use inherited 'subtype' (Coding) to categorize the computation type."
-      - "Use inherited 'specifiedBy' to reference formal method specifications."
+      - "Use inherited 'specified_by' to reference formal method specifications."
     attributes:
-      methodName:
+      method_name:
         range: string
         description: >-
           Human-readable name of the computational method.
-          Convenience field; formal method can be in inherited 'specifiedBy'.
+          Convenience field; formal method can be in inherited 'specified_by'.
 
-      methodId:
+      method_id:
         range: uriorcurie
         description: >-
           Identifier for the method (e.g., OBI term).
-          Convenience field; formal method can be in inherited 'specifiedBy'.
+          Convenience field; formal method can be in inherited 'specified_by'.
 
       parameters:
         range: string
         description: Method parameters (as JSON string or key=value format).
 
-      softwareVersion:
+      software_version:
         range: string
         description: Version of software/tool used.
 
 
   AgentContribution:
     is_a: SieveEvidenceItem
+    mixins:
+      - CuratedEvidence
     description: >-
       Evidence from any human or organizational contribution. Captures
       orthogonal dimensions for scoring: who contributed (trust level),
@@ -265,7 +298,7 @@ classes:
         inlined: true
         description: The agent (person or organization) who made the contribution.
 
-      trustLevel:
+      trust_level:
         range: TrustLevel
         description: >-
           Level of trust/authority assigned to the contributor.
@@ -277,7 +310,7 @@ classes:
           How the contribution was communicated/submitted.
           Affects traceability and reliability scoring.
 
-      contributionType:
+      contribution_type:
         range: ContributionType
         description: >-
           The nature of the contribution (suggestion, review, decision, etc.).
@@ -294,8 +327,10 @@ classes:
         description: The actual content of the contribution (what they said/provided).
 
       date:
-        range: date
-        description: When the contribution was made.
+        # range string (not the `date` type): see note in sepio_classes.yaml —
+        # a `date`-named slot with range `date` breaks gen-pydantic on Python 3.10.
+        range: string
+        description: When the contribution was made (ISO 8601 string).
 
 
   # ===========================================================================
@@ -322,6 +357,52 @@ classes:
         description: >-
           Inputs used by this activity (e.g., prompt versions, tools).
           Simplified alternative to SEPIO Activity.input for string-typed inputs.
+
+      pull_request:
+        range: uriorcurie
+        description: GitHub pull request URL associated with this activity.
+
+      issue:
+        range: uriorcurie
+        description: GitHub issue URL associated with this activity.
+
+      created_with:
+        range: uriorcurie
+        description: Tool or software used (e.g., a Protégé URI).
+
+
+  CurationDecision:
+    description: >-
+      A curator's decision on an EvidencePacket. One row per decision, preserving
+      history (richer than a single curated_by activity). Sieve-specific.
+    attributes:
+      id:
+        identifier: true
+        range: string
+      packet_id:
+        range: uriorcurie
+        required: true
+        description: Reference to the EvidencePacket.id this decision applies to.
+      curator:
+        range: uriorcurie
+        required: true
+        description: ORCID of the deciding curator.
+      curator_name:
+        range: string
+      decision:
+        range: DecisionType
+        required: true
+      rationale:
+        range: string
+        description: Explanation for the decision (required for rejections).
+      certainty:
+        range: float
+        minimum_value: 0
+        maximum_value: 1
+        description: Curator's confidence in this decision (0-1).
+      decided_at:
+        range: datetime
+        required: true
 
 
   Score:
@@ -385,6 +466,16 @@ enums:
         description: Rejected as invalid.
       CONTROVERSIAL:
         description: Conflicting evidence, needs discussion.
+
+  DecisionType:
+    description: A curator's decision on an assertion.
+    permissible_values:
+      ACCEPT:
+        description: Accept the assertion.
+      REJECT:
+        description: Reject the assertion.
+      CONTROVERSIAL:
+        description: Mark as controversial for further discussion.
 
   EvidenceDirection:
     description: Direction of evidence support.
