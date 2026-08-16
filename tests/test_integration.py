@@ -45,34 +45,34 @@ def create_test_packet() -> EvidencePacket:
     item = ConcordanceItem(
         id="ev_test_001",
         type="ConcordanceItem",
-        evidenceItemType=EvidenceItemType.ConcordanceItem,
-        sourceName="OMIM",
-        sourceSubject="OMIM:600807",
-        sourceSubjectLabel="Asthma",
+        evidence_item_type=EvidenceItemType.ConcordanceItem,
+        source_name="OMIM",
+        source_subject="OMIM:600807",
+        source_subject_label="Asthma",
         description="Cross-reference from OMIM supports this synonym",
     )
     line = SieveEvidenceLine(
         id="el_test_001",
         type="SieveEvidenceLine",
-        hasEvidenceItems=[item],
-        directionOfEvidenceProvided="supports",
-        strengthOfEvidenceProvided="strong",
-        scoreOfEvidenceProvided=0.9,
+        has_evidence_items=[item],
+        direction_of_evidence_provided="supports",
+        strength_of_evidence_provided="strong",
+        score_of_evidence_provided=0.9,
     )
     stmt = SieveStatement(
         id="stmt_integration_test",
         type="SieveStatement",
         subject="MONDO:0004979",
-        subjectLabel="asthma",
+        subject_label="asthma",
         predicate=predicate_to_coding(StatementPredicate.EXACT_SYNONYM),
         object="bronchial asthma",
-        objectLabel="bronchial asthma",
+        object_label="bronchial asthma",
     )
     return EvidencePacket(
         id="integration_test_pkt",
         statement=stmt,
         status=CurationStatus.UNREVIEWED,
-        hasEvidenceLines=[line],
+        has_evidence_lines=[line],
     )
 
 
@@ -116,21 +116,21 @@ def test_pubmed_enrichment():
         enricher = PacketEnricher(pubmed_client=client, max_papers=2)
 
         packet = create_test_packet()
-        original_line_count = len(packet.hasEvidenceLines)
+        original_line_count = len(packet.has_evidence_lines)
         print(f"\nOriginal evidence line count: {original_line_count}")
 
         # Enrich - this MERGES new evidence into the packet
         enriched = enricher.enrich(packet)
 
-        assert len(enriched.hasEvidenceLines) > original_line_count, \
+        assert len(enriched.has_evidence_lines) > original_line_count, \
             "Enrichment should add literature evidence lines"
 
         print("\nAfter enrichment:")
-        print(f"  Total evidence lines: {len(enriched.hasEvidenceLines)}")
+        print(f"  Total evidence lines: {len(enriched.has_evidence_lines)}")
 
-        for line in enriched.hasEvidenceLines:
-            print(f"  - Line {line.id}: {len(line.hasEvidenceItems or [])} items")
-            for item in line.hasEvidenceItems or []:
+        for line in enriched.has_evidence_lines:
+            print(f"  - Line {line.id}: {len(line.has_evidence_items or [])} items")
+            for item in line.has_evidence_items or []:
                 if isinstance(item, SieveDocument):
                     print(f"      PMID:{item.pmid}: {item.title[:50] if item.title else 'No title'}...")
 
@@ -188,7 +188,7 @@ def test_full_pipeline():
 
     The final EvidencePacket is a complete unit with:
     - statement: the assertion being evaluated
-    - hasEvidenceLines: merged list of all evidence lines
+    - has_evidence_lines: merged list of all evidence lines
     - evidence_synthesis: AI-generated synthesis with summary
     """
     anthropic_key = os.environ.get("ANTHROPIC_API_KEY")
@@ -208,8 +208,8 @@ def test_full_pipeline():
     packet = create_test_packet()
     predicate = packet.statement.predicate
     pred_label = predicate.label if predicate else "unknown"
-    print(f"    Statement: {packet.statement.subjectLabel} {pred_label} '{packet.statement.object}'")
-    print(f"    Initial evidence lines: {len(packet.hasEvidenceLines)}")
+    print(f"    Statement: {packet.statement.subject_label} {pred_label} '{packet.statement.object}'")
+    print(f"    Initial evidence lines: {len(packet.has_evidence_lines)}")
     print(f"    Evidence synthesis: {packet.evidence_synthesis}")
 
     # Step 2: Enrich - MERGE literature evidence into packet
@@ -221,15 +221,15 @@ def test_full_pipeline():
 
     concordance_count = 0
     literature_count = 0
-    for line in packet.hasEvidenceLines or []:
-        for item in line.hasEvidenceItems or []:
+    for line in packet.has_evidence_lines or []:
+        for item in line.has_evidence_items or []:
             if isinstance(item, ConcordanceItem):
                 concordance_count += 1
             elif isinstance(item, SieveDocument):
                 literature_count += 1
     print(f"    Concordance items: {concordance_count}")
     print(f"    Literature items: {literature_count}")
-    print(f"    Total evidence lines: {len(packet.hasEvidenceLines or [])}")
+    print(f"    Total evidence lines: {len(packet.has_evidence_lines or [])}")
 
     # Step 3: Synthesize - add evidence_synthesis INTO the packet
     print(f"\n[3] Running AI synthesis ({provider})...")
@@ -243,8 +243,8 @@ def test_full_pipeline():
     # Step 4: Verify final packet structure
     print("\n[4] Final EvidencePacket structure:")
     print(f"    packet.id: {packet.id}")
-    print(f"    packet.statement: {packet.statement.subjectLabel} -> {packet.statement.object}")
-    print(f"    packet.hasEvidenceLines: {len(packet.hasEvidenceLines or [])} lines")
+    print(f"    packet.statement: {packet.statement.subject_label} -> {packet.statement.object}")
+    print(f"    packet.has_evidence_lines: {len(packet.has_evidence_lines or [])} lines")
     print(f"    packet.evidence_synthesis: present (score: {packet.evidence_synthesis.score})")
 
     # Step 5: Export complete packet to YAML
@@ -268,7 +268,7 @@ def test_full_pipeline():
 
     # Final assertions
     assert packet.evidence_synthesis is not None, "Packet must have evidence_synthesis"
-    assert len(packet.hasEvidenceLines or []) >= 1, "Packet must have evidence lines"
+    assert len(packet.has_evidence_lines or []) >= 1, "Packet must have evidence lines"
 
 
 @pytest.mark.integration
@@ -358,12 +358,12 @@ def test_pipeline_runner_multi_source():
     sources = {}
     predicates = {}
     for packet in packets:
-        # SIEVE: evidence is in hasEvidenceLines
-        if packet.hasEvidenceLines:
-            for line in packet.hasEvidenceLines:
-                for item in line.hasEvidenceItems or []:
-                    if hasattr(item, 'sourceName') and item.sourceName:
-                        source = item.sourceName
+        # SIEVE: evidence is in has_evidence_lines
+        if packet.has_evidence_lines:
+            for line in packet.has_evidence_lines:
+                for item in line.has_evidence_items or []:
+                    if hasattr(item, 'source_name') and item.source_name:
+                        source = item.source_name
                         sources[source] = sources.get(source, 0) + 1
         # Get predicate label
         pred = packet.statement.predicate
@@ -387,8 +387,8 @@ def test_pipeline_runner_multi_source():
         assert packet.id, "Packet should have ID"
         assert packet.statement, "Packet should have statement"
         assert packet.statement.subject, "Statement should have subject (Mondo ID)"
-        assert packet.hasEvidenceLines, "Packet should have evidence lines"
-        print(f"    {packet.id}: {packet.statement.subjectLabel} -> {packet.statement.object}")
+        assert packet.has_evidence_lines, "Packet should have evidence lines"
+        print(f"    {packet.id}: {packet.statement.subject_label} -> {packet.statement.object}")
 
     # Export to temp directory
     print("\n[5] Exporting packets...")

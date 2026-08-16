@@ -138,7 +138,7 @@ class TestHasLiteratureEvidence:
             id="test_stmt",
             type="SieveStatement",
             subject="MONDO:0005015",
-            subjectLabel="diabetes mellitus",
+            subject_label="diabetes mellitus",
             object="diabetes",
         )
         packet = EvidencePacket(
@@ -154,30 +154,30 @@ class TestHasLiteratureEvidence:
             id="test_stmt",
             type="SieveStatement",
             subject="MONDO:0005015",
-            subjectLabel="diabetes mellitus",
+            subject_label="diabetes mellitus",
             object="diabetes",
         )
         concordance = ConcordanceItem(
             id="ev_001",
             type="ConcordanceItem",
-            evidenceItemType=EvidenceItemType.ConcordanceItem,
-            sourceName="OMIM",
-            sourceId="omim",
-            sourceSubject="OMIM:125853",
-            sourceSubjectLabel="Diabetes mellitus",
+            evidence_item_type=EvidenceItemType.ConcordanceItem,
+            source_name="OMIM",
+            source_id="omim",
+            source_subject="OMIM:125853",
+            source_subject_label="Diabetes mellitus",
         )
         line = SieveEvidenceLine(
             id="el_001",
             type="SieveEvidenceLine",
-            hasEvidenceItems=[concordance],
-            directionOfEvidenceProvided=EvidenceDirection.supports.value,
-            strengthOfEvidenceProvided=EvidenceStrength.moderate.value,
+            has_evidence_items=[concordance],
+            direction_of_evidence_provided=EvidenceDirection.supports.value,
+            strength_of_evidence_provided=EvidenceStrength.moderate.value,
         )
         packet = EvidencePacket(
             id="test_pkt",
             statement=stmt,
             status=CurationStatus.UNREVIEWED,
-            hasEvidenceLines=[line],
+            has_evidence_lines=[line],
         )
         assert has_literature_evidence(packet) is False
 
@@ -187,7 +187,7 @@ class TestHasLiteratureEvidence:
             id="test_stmt",
             type="SieveStatement",
             subject="MONDO:0005015",
-            subjectLabel="diabetes mellitus",
+            subject_label="diabetes mellitus",
             object="diabetes",
         )
         doc = SieveDocument(
@@ -199,15 +199,15 @@ class TestHasLiteratureEvidence:
         line = SieveEvidenceLine(
             id="el_002",
             type="SieveEvidenceLine",
-            hasEvidenceItems=[doc],
-            directionOfEvidenceProvided=EvidenceDirection.supports.value,
-            strengthOfEvidenceProvided=EvidenceStrength.moderate.value,
+            has_evidence_items=[doc],
+            direction_of_evidence_provided=EvidenceDirection.supports.value,
+            strength_of_evidence_provided=EvidenceStrength.moderate.value,
         )
         packet = EvidencePacket(
             id="test_pkt",
             statement=stmt,
             status=CurationStatus.UNREVIEWED,
-            hasEvidenceLines=[line],
+            has_evidence_lines=[line],
         )
         assert has_literature_evidence(packet) is True
 
@@ -217,17 +217,17 @@ class TestHasLiteratureEvidence:
             id="test_stmt",
             type="SieveStatement",
             subject="MONDO:0005015",
-            subjectLabel="diabetes mellitus",
+            subject_label="diabetes mellitus",
             object="diabetes",
         )
         concordance = ConcordanceItem(
             id="ev_001",
             type="ConcordanceItem",
-            evidenceItemType=EvidenceItemType.ConcordanceItem,
-            sourceName="OMIM",
-            sourceId="omim",
-            sourceSubject="OMIM:125853",
-            sourceSubjectLabel="Diabetes mellitus",
+            evidence_item_type=EvidenceItemType.ConcordanceItem,
+            source_name="OMIM",
+            source_id="omim",
+            source_subject="OMIM:125853",
+            source_subject_label="Diabetes mellitus",
         )
         doc = SieveDocument(
             id="ev_002",
@@ -238,22 +238,22 @@ class TestHasLiteratureEvidence:
         concordance_line = SieveEvidenceLine(
             id="el_001",
             type="SieveEvidenceLine",
-            hasEvidenceItems=[concordance],
-            directionOfEvidenceProvided=EvidenceDirection.supports.value,
-            strengthOfEvidenceProvided=EvidenceStrength.moderate.value,
+            has_evidence_items=[concordance],
+            direction_of_evidence_provided=EvidenceDirection.supports.value,
+            strength_of_evidence_provided=EvidenceStrength.moderate.value,
         )
         literature_line = SieveEvidenceLine(
             id="el_002",
             type="SieveEvidenceLine",
-            hasEvidenceItems=[doc],
-            directionOfEvidenceProvided=EvidenceDirection.supports.value,
-            strengthOfEvidenceProvided=EvidenceStrength.moderate.value,
+            has_evidence_items=[doc],
+            direction_of_evidence_provided=EvidenceDirection.supports.value,
+            strength_of_evidence_provided=EvidenceStrength.moderate.value,
         )
         packet = EvidencePacket(
             id="test_pkt",
             statement=stmt,
             status=CurationStatus.UNREVIEWED,
-            hasEvidenceLines=[concordance_line, literature_line],
+            has_evidence_lines=[concordance_line, literature_line],
         )
         assert has_literature_evidence(packet) is True
 
@@ -267,16 +267,16 @@ class TestPacketEnricher:
             id="test_stmt_001",
             type="SieveStatement",
             subject="MONDO:0005015",
-            subjectLabel="diabetes mellitus",
+            subject_label="diabetes mellitus",
             predicate=predicate_to_coding(StatementPredicate.EXACT_SYNONYM),
             object="diabetes",
-            objectLabel="diabetes",
+            object_label="diabetes",
         )
         return EvidencePacket(
             id="test_pkt",
             statement=stmt,
             status=CurationStatus.UNREVIEWED,
-            hasEvidenceLines=[],
+            has_evidence_lines=[],
         )
 
     def _make_paper(self, pmid: str = "12345678", title: str = "Test Paper") -> PubMedPaper:
@@ -307,13 +307,13 @@ class TestPacketEnricher:
 
         enriched = enricher.enrich(packet)
 
-        # SIEVE: evidence is in hasEvidenceLines
-        assert len(enriched.hasEvidenceLines) == 1
-        line = enriched.hasEvidenceLines[0]
-        assert line.directionOfEvidenceProvided == "supports"
+        # SIEVE: evidence is in has_evidence_lines
+        assert len(enriched.has_evidence_lines) == 1
+        line = enriched.has_evidence_lines[0]
+        assert line.direction_of_evidence_provided == "supports"
         # Evidence items contain SieveDocument
-        assert len(line.hasEvidenceItems) == 1
-        doc = line.hasEvidenceItems[0]
+        assert len(line.has_evidence_items) == 1
+        doc = line.has_evidence_items[0]
         assert doc.pmid == "12345678"
 
     def test_enrich_packets_batch(self):
@@ -327,7 +327,7 @@ class TestPacketEnricher:
 
         assert len(enriched) == 3
         for packet in enriched:
-            assert len(packet.hasEvidenceLines) == 1
+            assert len(packet.has_evidence_lines) == 1
 
     def test_skip_enriched_by_default(self):
         """Test that packets with literature are skipped by default."""
@@ -346,19 +346,19 @@ class TestPacketEnricher:
         line = SieveEvidenceLine(
             id="el_existing",
             type="SieveEvidenceLine",
-            hasEvidenceItems=[doc],
-            directionOfEvidenceProvided=EvidenceDirection.supports.value,
-            strengthOfEvidenceProvided=EvidenceStrength.moderate.value,
+            has_evidence_items=[doc],
+            direction_of_evidence_provided=EvidenceDirection.supports.value,
+            strength_of_evidence_provided=EvidenceStrength.moderate.value,
         )
-        packet.hasEvidenceLines = [line]
+        packet.has_evidence_lines = [line]
 
         # Should skip enrichment
         assert enricher.should_enrich(packet) is False
 
         # Enrich should not add new evidence
         enriched = enricher.enrich(packet)
-        assert len(enriched.hasEvidenceLines) == 1
-        assert enriched.hasEvidenceLines[0].hasEvidenceItems[0].pmid == "99999999"
+        assert len(enriched.has_evidence_lines) == 1
+        assert enriched.has_evidence_lines[0].has_evidence_items[0].pmid == "99999999"
 
     def test_force_enrichment_with_skip_enriched_false(self):
         """Test that skip_enriched=False allows re-enrichment."""
@@ -377,22 +377,22 @@ class TestPacketEnricher:
         line = SieveEvidenceLine(
             id="el_existing",
             type="SieveEvidenceLine",
-            hasEvidenceItems=[doc],
-            directionOfEvidenceProvided=EvidenceDirection.supports.value,
-            strengthOfEvidenceProvided=EvidenceStrength.moderate.value,
+            has_evidence_items=[doc],
+            direction_of_evidence_provided=EvidenceDirection.supports.value,
+            strength_of_evidence_provided=EvidenceStrength.moderate.value,
         )
-        packet.hasEvidenceLines = [line]
+        packet.has_evidence_lines = [line]
 
         # Should enrich even though it has literature
         assert enricher.should_enrich(packet) is True
 
         # Enrich should add new evidence
         enriched = enricher.enrich(packet)
-        assert len(enriched.hasEvidenceLines) == 2
+        assert len(enriched.has_evidence_lines) == 2
         pmids = [
-            line.hasEvidenceItems[0].pmid
-            for line in enriched.hasEvidenceLines
-            if hasattr(line.hasEvidenceItems[0], "pmid")
+            line.has_evidence_items[0].pmid
+            for line in enriched.has_evidence_lines
+            if hasattr(line.has_evidence_items[0], "pmid")
         ]
         assert "99999999" in pmids
         assert "11111111" in pmids

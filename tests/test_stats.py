@@ -42,9 +42,9 @@ def _make_packet(
                 ConcordanceItem(
                     id=f"ev_{packet_id}_{i}_{j}",
                     type="ConcordanceItem",
-                    evidenceItemType=EvidenceItemType.ConcordanceItem,
-                    sourceName=source_name,
-                    sourceId=source_id,
+                    evidence_item_type=EvidenceItemType.ConcordanceItem,
+                    source_name=source_name,
+                    source_id=source_id,
                     description=f"Evidence item {j}",
                 )
             )
@@ -52,10 +52,10 @@ def _make_packet(
             SieveEvidenceLine(
                 id=f"el_{packet_id}_{i}",
                 type="SieveEvidenceLine",
-                hasEvidenceItems=items,
-                directionOfEvidenceProvided=direction,
-                strengthOfEvidenceProvided=strength,
-                scoreOfEvidenceProvided=score,
+                has_evidence_items=items,
+                direction_of_evidence_provided=direction,
+                strength_of_evidence_provided=strength,
+                score_of_evidence_provided=score,
             )
         )
 
@@ -65,14 +65,14 @@ def _make_packet(
             id=f"stmt_{packet_id}",
             type="SieveStatement",
             subject=subject,
-            subjectLabel=subject_label,
+            subject_label=subject_label,
             predicate=Coding(code=predicate_code, label=predicate_label),
             object=object_value,
-            objectLabel=object_value,
-            statementText=f"{subject_label} has {predicate_label} '{object_value}'",
+            object_label=object_value,
+            statement_text=f"{subject_label} has {predicate_label} '{object_value}'",
         ),
         status=status,
-        hasEvidenceLines=evidence_lines,
+        has_evidence_lines=evidence_lines,
         created=date(2026, 3, 18),
     )
 

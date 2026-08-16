@@ -171,14 +171,14 @@ class TestRoundtripSerialization:
             subject="MONDO:0000001",
             predicate=Coding(code="oio:hasExactSynonym", label="exact synonym"),
             object="some disease",
-            subjectLabel="Test Disease",
-            objectLabel="some disease",
-            statementText="Test Disease has exact synonym 'some disease'",
+            subject_label="Test Disease",
+            object_label="some disease",
+            statement_text="Test Disease has exact synonym 'some disease'",
         )
         data = stmt.model_dump(mode="json", exclude_none=True)
         result = SieveStatement.model_validate(data)
         assert result.subject == "MONDO:0000001"
-        assert result.subjectLabel == "Test Disease"
+        assert result.subject_label == "Test Disease"
         assert result.predicate is not None
         assert result.predicate.code == "oio:hasExactSynonym"
 
@@ -186,39 +186,39 @@ class TestRoundtripSerialization:
         item = ConcordanceItem(
             id="conc-1",
             type="ConcordanceItem",
-            sourceName="Disease Ontology",
-            sourceId="DOID:12345",
-            sourceVersion="2024-01-01",
-            sourceSubject="DOID:12345",
-            sourceSubjectLabel="Some Disease",
-            sourcePredicate="oio:hasExactSynonym",
-            sourcePredicateLabel="exact synonym",
-            sourceObject="some disease name",
-            sourceObjectLabel="some disease name",
-            mappingJustification="semapv:LexicalMatching",
+            source_name="Disease Ontology",
+            source_id="DOID:12345",
+            source_version="2024-01-01",
+            source_subject="DOID:12345",
+            source_subject_label="Some Disease",
+            source_predicate="oio:hasExactSynonym",
+            source_predicate_label="exact synonym",
+            source_object="some disease name",
+            source_object_label="some disease name",
+            mapping_justification="semapv:LexicalMatching",
         )
         data = item.model_dump(mode="json", exclude_none=True)
         result = ConcordanceItem.model_validate(data)
-        assert result.sourceName == "Disease Ontology"
-        assert result.sourceSubject == "DOID:12345"
+        assert result.source_name == "Disease Ontology"
+        assert result.source_subject == "DOID:12345"
 
     def test_agent_contribution_roundtrip(self) -> None:
         contrib = AgentContribution(
             id="ac-1",
             type="AgentContribution",
             contributor=Agent(id="person-1", type="Agent", name="Dr. Smith"),
-            trustLevel=TrustLevel.curator,
+            trust_level=TrustLevel.curator,
             channel=ContributionChannel.issue_tracker,
-            contributionType=ContributionType.review,
+            contribution_type=ContributionType.review,
             reference="https://github.com/org/repo/issues/123",
             content="This synonym looks correct",
-            date=date(2024, 1, 15),
+            date="2024-01-15",
         )
         data = contrib.model_dump(mode="json", exclude_none=True)
         result = AgentContribution.model_validate(data)
         assert result.contributor is not None
         assert result.contributor.name == "Dr. Smith"
-        assert result.trustLevel == "curator"
+        assert result.trust_level == "curator"
 
     def test_sieve_document_roundtrip(self) -> None:
         doc = SieveDocument(
@@ -227,7 +227,7 @@ class TestRoundtripSerialization:
             pmid="PMID:12345678",
             title="A Study on Diseases",
             quote="The disease is characterized by...",
-            quoteLocation="Section 3, paragraph 2",
+            quote_location="Section 3, paragraph 2",
         )
         data = doc.model_dump(mode="json", exclude_none=True)
         result = SieveDocument.model_validate(data)
@@ -239,37 +239,37 @@ class TestRoundtripSerialization:
             id="comp-1",
             type="ComputationalResult",
             value="0.95",
-            methodName="Semantic Similarity",
-            methodId="OBI:0001234",
+            method_name="Semantic Similarity",
+            method_id="OBI:0001234",
             parameters="threshold=0.8",
-            softwareVersion="1.2.3",
+            software_version="1.2.3",
         )
         data = comp.model_dump(mode="json", exclude_none=True)
         result = ComputationalResult.model_validate(data)
-        assert result.methodName == "Semantic Similarity"
+        assert result.method_name == "Semantic Similarity"
         assert result.value == "0.95"
 
     def test_evidence_line_roundtrip(self) -> None:
         line = SieveEvidenceLine(
             id="el-1",
             type="SieveEvidenceLine",
-            directionOfEvidenceProvided="supports",
-            strengthOfEvidenceProvided="strong",
-            hasEvidenceItems=[
+            direction_of_evidence_provided="supports",
+            strength_of_evidence_provided="strong",
+            has_evidence_items=[
                 ConcordanceItem(
                     id="conc-1",
                     type="ConcordanceItem",
-                    sourceName="DOID",
-                    sourceSubject="DOID:1",
-                    sourceObject="test",
+                    source_name="DOID",
+                    source_subject="DOID:1",
+                    source_object="test",
                 ),
             ],
         )
         data = line.model_dump(mode="json", exclude_none=True)
         result = SieveEvidenceLine.model_validate(data)
-        assert result.directionOfEvidenceProvided == "supports"
-        assert result.hasEvidenceItems is not None
-        assert len(result.hasEvidenceItems) == 1
+        assert result.direction_of_evidence_provided == "supports"
+        assert result.has_evidence_items is not None
+        assert len(result.has_evidence_items) == 1
 
     def test_evidence_synthesis_roundtrip(self) -> None:
         synth = EvidenceSynthesis(
@@ -294,28 +294,28 @@ class TestRoundtripSerialization:
                 subject="MONDO:0000001",
                 predicate=Coding(code="oio:hasExactSynonym"),
                 object="test disease",
-                subjectLabel="Mondo Disease",
-                objectLabel="test disease",
+                subject_label="Mondo Disease",
+                object_label="test disease",
             ),
             status=CurationStatus.UNREVIEWED,
-            hasEvidenceLines=[
+            has_evidence_lines=[
                 SieveEvidenceLine(
                     id="el-1",
                     type="SieveEvidenceLine",
-                    directionOfEvidenceProvided="supports",
-                    hasEvidenceItems=[
+                    direction_of_evidence_provided="supports",
+                    has_evidence_items=[
                         ConcordanceItem(
                             id="conc-1",
                             type="ConcordanceItem",
-                            sourceName="DOID",
-                            sourceSubject="DOID:1234",
-                            sourceObject="test disease",
+                            source_name="DOID",
+                            source_subject="DOID:1234",
+                            source_object="test disease",
                         ),
                         AgentContribution(
                             id="ac-1",
                             type="AgentContribution",
                             contributor=Agent(id="a1", type="Agent", name="Curator"),
-                            trustLevel=TrustLevel.curator,
+                            trust_level=TrustLevel.curator,
                             content="Confirmed",
                         ),
                         SieveDocument(
@@ -339,10 +339,10 @@ class TestRoundtripSerialization:
         data = packet.model_dump(mode="json", exclude_none=True)
         result = EvidencePacket.model_validate(data)
         assert result.id == "pkt-test-001"
-        assert result.statement.subjectLabel == "Mondo Disease"
-        assert result.hasEvidenceLines is not None
-        assert len(result.hasEvidenceLines) == 1
-        items = result.hasEvidenceLines[0].hasEvidenceItems
+        assert result.statement.subject_label == "Mondo Disease"
+        assert result.has_evidence_lines is not None
+        assert len(result.has_evidence_lines) == 1
+        items = result.has_evidence_lines[0].has_evidence_items
         assert items is not None
         assert len(items) == 3
         assert result.evidence_synthesis is not None
@@ -414,33 +414,33 @@ class TestPolymorphism:
             "id": "pkt-1",
             "statement": {"id": "s1", "type": "SieveStatement", "subject": "X", "object": "Y"},
             "status": "UNREVIEWED",
-            "hasEvidenceLines": [
+            "has_evidence_lines": [
                 {
                     "id": "el-1",
                     "type": "SieveEvidenceLine",
-                    "hasEvidenceItems": [
+                    "has_evidence_items": [
                         {
                             "id": "ci-1",
                             "type": "ConcordanceItem",
-                            "sourceName": "DOID",
-                            "sourceSubject": "DOID:1",
-                            "sourceObject": "test",
+                            "source_name": "DOID",
+                            "source_subject": "DOID:1",
+                            "source_object": "test",
                         }
                     ],
                 }
             ],
         }
         result = _convert_evidence_items(data)
-        item = result["hasEvidenceLines"][0]["hasEvidenceItems"][0]
+        item = result["has_evidence_lines"][0]["has_evidence_items"][0]
         assert isinstance(item, ConcordanceItem)
-        assert item.sourceName == "DOID"
+        assert item.source_name == "DOID"
 
     def test_convert_mixed_evidence_items(self) -> None:
         data = {
-            "hasEvidenceLines": [
+            "has_evidence_lines": [
                 {
-                    "hasEvidenceItems": [
-                        {"id": "ci-1", "type": "ConcordanceItem", "sourceName": "DOID"},
+                    "has_evidence_items": [
+                        {"id": "ci-1", "type": "ConcordanceItem", "source_name": "DOID"},
                         {"id": "ac-1", "type": "AgentContribution", "content": "Looks good"},
                         {"id": "doc-1", "type": "SieveDocument", "title": "Paper"},
                     ]
@@ -448,9 +448,9 @@ class TestPolymorphism:
             ]
         }
         result = _convert_evidence_items(data)
-        items = result["hasEvidenceLines"][0]["hasEvidenceItems"]
-        # AgentContribution is NOT in EVIDENCE_ITEM_TYPES so kept as dict
+        items = result["has_evidence_lines"][0]["has_evidence_items"]
         assert isinstance(items[0], ConcordanceItem)
+        assert isinstance(items[1], AgentContribution)
         assert isinstance(items[2], SieveDocument)
 
     def test_evidence_item_types_mapping(self) -> None:
@@ -557,7 +557,7 @@ class TestInheritance:
         assert issubclass(SieveEvidenceLine, EvidenceLine)
 
     def test_concordance_item_has_type_field(self) -> None:
-        item = ConcordanceItem(id="ci-1", type="ConcordanceItem", sourceName="DOID")
+        item = ConcordanceItem(id="ci-1", type="ConcordanceItem", source_name="DOID")
         assert item.type == "ConcordanceItem"
 
     def test_curation_activity_is_contribution(self) -> None:

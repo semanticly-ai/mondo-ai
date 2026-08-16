@@ -88,10 +88,10 @@ class TestPacketBuilder:
             id="stmt_test",
             type="SieveStatement",
             subject="MONDO:0005015",
-            subjectLabel="diabetes mellitus",
+            subject_label="diabetes mellitus",
             predicate=Coding(code="oio:hasExactSynonym", label="exact synonym"),
             object="DM",
-            objectLabel="DM",
+            object_label="DM",
         )
 
         packet1 = builder.build_packet(
@@ -178,8 +178,8 @@ class TestPacketBuilder:
             source_entity_label="diabetes mellitus",
         )
 
-        assert packet1.hasEvidenceLines[0].id == packet2.hasEvidenceLines[0].id
-        assert packet1.hasEvidenceLines[0].hasEvidenceItems[0].id == packet2.hasEvidenceLines[0].hasEvidenceItems[0].id
+        assert packet1.has_evidence_lines[0].id == packet2.has_evidence_lines[0].id
+        assert packet1.has_evidence_lines[0].has_evidence_items[0].id == packet2.has_evidence_lines[0].has_evidence_items[0].id
 
 
 class TestPacketMerger:
@@ -219,7 +219,7 @@ class TestPacketMerger:
 
         merged = merger.get_packets()
         assert len(merged) == 1
-        assert len(merged[0].hasEvidenceLines) == 2
+        assert len(merged[0].has_evidence_lines) == 2
 
     def test_no_merge_different_statements(self):
         """Packets with different statements should not merge."""
@@ -285,10 +285,10 @@ class TestOrcidEvidenceLine:
             packet_id="pkt_test",
             orcid="0000-0001-2345-6789",
         )
-        assert len(line.hasEvidenceItems) == 1
-        item = line.hasEvidenceItems[0]
+        assert len(line.has_evidence_items) == 1
+        item = line.has_evidence_items[0]
         assert isinstance(item, AgentContribution)
-        assert item.evidenceItemType == EvidenceItemType.AgentContribution
+        assert item.evidence_item_type == EvidenceItemType.AgentContribution
 
     def test_agent_is_orcid_person(self):
         """Agent should be the ORCID person."""
@@ -297,7 +297,7 @@ class TestOrcidEvidenceLine:
             packet_id="pkt_test",
             orcid="0000-0001-2345-6789",
         )
-        item = line.hasEvidenceItems[0]
+        item = line.has_evidence_items[0]
         assert item.contributor.id == "ORCID:0000-0001-2345-6789"
         assert item.contributor.subtype == "person"
 
@@ -308,9 +308,9 @@ class TestOrcidEvidenceLine:
             packet_id="pkt_test",
             orcid="0000-0001-2345-6789",
         )
-        item = line.hasEvidenceItems[0]
-        assert item.trustLevel == TrustLevel.curator
-        assert item.contributionType == ContributionType.decision
+        item = line.has_evidence_items[0]
+        assert item.trust_level == TrustLevel.curator
+        assert item.contribution_type == ContributionType.decision
 
     def test_deterministic_ids(self):
         """Same ORCID should produce same IDs."""
@@ -318,7 +318,7 @@ class TestOrcidEvidenceLine:
         line1 = builder._create_orcid_evidence_line("pkt_test", "0000-0001-2345-6789")
         line2 = builder._create_orcid_evidence_line("pkt_test", "0000-0001-2345-6789")
         assert line1.id == line2.id
-        assert line1.hasEvidenceItems[0].id == line2.hasEvidenceItems[0].id
+        assert line1.has_evidence_items[0].id == line2.has_evidence_items[0].id
 
 
 class TestPmidEvidenceLine:
@@ -341,8 +341,8 @@ class TestPmidEvidenceLine:
             packet_id="pkt_test",
             pmid="12345678",
         )
-        assert len(line.hasEvidenceItems) == 1
-        item = line.hasEvidenceItems[0]
+        assert len(line.has_evidence_items) == 1
+        item = line.has_evidence_items[0]
         assert isinstance(item, SieveDocument)
 
     def test_pmid_in_document(self):
@@ -352,7 +352,7 @@ class TestPmidEvidenceLine:
             packet_id="pkt_test",
             pmid="12345678",
         )
-        item = line.hasEvidenceItems[0]
+        item = line.has_evidence_items[0]
         assert item.pmid == "12345678"
 
     def test_candidate_subtype(self):
@@ -362,7 +362,7 @@ class TestPmidEvidenceLine:
             packet_id="pkt_test",
             pmid="12345678",
         )
-        item = line.hasEvidenceItems[0]
+        item = line.has_evidence_items[0]
         assert item.subtype is not None
         assert item.subtype.code == "candidate_reference"
         assert item.subtype.system == "mondo:evidence_status"
@@ -374,8 +374,8 @@ class TestPmidEvidenceLine:
             packet_id="pkt_test",
             pmid="12345678",
         )
-        assert line.strengthOfEvidenceProvided == "weak"
-        assert line.scoreOfEvidenceProvided == 0.4
+        assert line.strength_of_evidence_provided == "weak"
+        assert line.score_of_evidence_provided == 0.4
 
 
 class TestConsortiumDecisionEvidenceLine:
@@ -392,15 +392,15 @@ class TestConsortiumDecisionEvidenceLine:
         """Evidence line should contain AgentContribution."""
         builder = PacketBuilder()
         line = builder._create_consortium_evidence_line(packet_id="pkt_test")
-        assert len(line.hasEvidenceItems) == 1
-        item = line.hasEvidenceItems[0]
+        assert len(line.has_evidence_items) == 1
+        item = line.has_evidence_items[0]
         assert isinstance(item, AgentContribution)
 
     def test_consortium_agent(self):
         """Agent should be Mondo consortium."""
         builder = PacketBuilder()
         line = builder._create_consortium_evidence_line(packet_id="pkt_test")
-        item = line.hasEvidenceItems[0]
+        item = line.has_evidence_items[0]
         assert item.contributor.id == "mondo:consortium"
         assert item.contributor.subtype == "organization"
         assert "Mondo" in item.contributor.name
@@ -409,9 +409,9 @@ class TestConsortiumDecisionEvidenceLine:
         """Should use authority trust level."""
         builder = PacketBuilder()
         line = builder._create_consortium_evidence_line(packet_id="pkt_test")
-        item = line.hasEvidenceItems[0]
-        assert item.trustLevel == TrustLevel.authority
-        assert item.contributionType == ContributionType.decision
+        item = line.has_evidence_items[0]
+        assert item.trust_level == TrustLevel.authority
+        assert item.contribution_type == ContributionType.decision
 
     def test_version_in_description(self):
         """Version should appear in description if provided."""
@@ -420,7 +420,7 @@ class TestConsortiumDecisionEvidenceLine:
             packet_id="pkt_test",
             source_version="v2024-01-01",
         )
-        item = line.hasEvidenceItems[0]
+        item = line.has_evidence_items[0]
         assert "v2024-01-01" in item.description
 
 
@@ -448,8 +448,8 @@ class TestBuildPacketWithProvenance:
             source_entity_label="diabetes mellitus",
             is_mondo_source=False,
         )
-        assert len(packet.hasEvidenceLines) == 1
-        assert packet.hasEvidenceLines[0].hasEvidenceItems[0].type == "ConcordanceItem"
+        assert len(packet.has_evidence_lines) == 1
+        assert packet.has_evidence_lines[0].has_evidence_items[0].type == "ConcordanceItem"
 
     def test_mondo_source_creates_consortium_decision(self):
         """Mondo source should create consortium decision evidence."""
@@ -462,8 +462,8 @@ class TestBuildPacketWithProvenance:
             source_entity_label="diabetes mellitus",
             is_mondo_source=True,
         )
-        assert len(packet.hasEvidenceLines) == 1
-        item = packet.hasEvidenceLines[0].hasEvidenceItems[0]
+        assert len(packet.has_evidence_lines) == 1
+        item = packet.has_evidence_lines[0].has_evidence_items[0]
         assert item.type == "AgentContribution"
         assert item.contributor.id == "mondo:consortium"
 
@@ -478,11 +478,11 @@ class TestBuildPacketWithProvenance:
             source_entity_label="diabetes mellitus",
             orcids=["0000-0001-2345-6789", "0000-0002-3456-7890"],
         )
-        assert len(packet.hasEvidenceLines) == 3  # 1 concordance + 2 ORCID
+        assert len(packet.has_evidence_lines) == 3  # 1 concordance + 2 ORCID
         orcid_lines = [
-            line for line in packet.hasEvidenceLines
-            if isinstance(line.hasEvidenceItems[0], AgentContribution)
-            and line.hasEvidenceItems[0].contributor.subtype == "person"
+            line for line in packet.has_evidence_lines
+            if isinstance(line.has_evidence_items[0], AgentContribution)
+            and line.has_evidence_items[0].contributor.subtype == "person"
         ]
         assert len(orcid_lines) == 2
 
@@ -497,10 +497,10 @@ class TestBuildPacketWithProvenance:
             source_entity_label="diabetes mellitus",
             pmids=["12345678", "87654321"],
         )
-        assert len(packet.hasEvidenceLines) == 3  # 1 concordance + 2 PMID
+        assert len(packet.has_evidence_lines) == 3  # 1 concordance + 2 PMID
         pmid_lines = [
-            line for line in packet.hasEvidenceLines
-            if isinstance(line.hasEvidenceItems[0], SieveDocument)
+            line for line in packet.has_evidence_lines
+            if isinstance(line.has_evidence_items[0], SieveDocument)
         ]
         assert len(pmid_lines) == 2
 
@@ -518,4 +518,4 @@ class TestBuildPacketWithProvenance:
             pmids=["12345678"],
         )
         # 1 consortium + 1 ORCID + 1 PMID = 3 lines
-        assert len(packet.hasEvidenceLines) == 3
+        assert len(packet.has_evidence_lines) == 3

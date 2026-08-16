@@ -27,7 +27,7 @@ def _create_test_packet(packet_id: str, subject: str = "MONDO:0000001") -> Evide
         subject=subject,
         predicate=Coding(code="oio:hasExactSynonym", label="exact synonym"),
         object="test synonym",
-        statementText=f"Test statement for {packet_id}",
+        statement_text=f"Test statement for {packet_id}",
     )
     return EvidencePacket(
         id=packet_id,
@@ -529,7 +529,7 @@ class TestMergeEvidence:
             new_line = SieveEvidenceLine(
                 id="line_001",
                 type="SieveEvidenceLine",
-                directionOfEvidenceProvided="supports",
+                direction_of_evidence_provided="supports",
             )
             updated, filename = store.merge_evidence("pkt_merge", [new_line])
 
@@ -538,9 +538,9 @@ class TestMergeEvidence:
             # Retrieved packet should have evidence
             retrieved = store.get_packet("pkt_merge")
             assert retrieved is not None
-            assert retrieved.hasEvidenceLines is not None
-            assert len(retrieved.hasEvidenceLines) == 1
-            assert retrieved.hasEvidenceLines[0].id == "line_001"
+            assert retrieved.has_evidence_lines is not None
+            assert len(retrieved.has_evidence_lines) == 1
+            assert retrieved.has_evidence_lines[0].id == "line_001"
 
     def test_merge_evidence_deduplicates_by_id(self) -> None:
         """Test that merge_evidence doesn't add duplicate evidence lines."""
@@ -566,8 +566,8 @@ class TestMergeEvidence:
 
             retrieved = store.get_packet("pkt_dedup_merge")
             assert retrieved is not None
-            assert retrieved.hasEvidenceLines is not None
-            assert len(retrieved.hasEvidenceLines) == 1
+            assert retrieved.has_evidence_lines is not None
+            assert len(retrieved.has_evidence_lines) == 1
 
     def test_merge_evidence_nonexistent_packet_raises(self) -> None:
         """Test that merging into nonexistent packet raises error."""

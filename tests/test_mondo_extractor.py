@@ -119,9 +119,9 @@ class TestCreateConsortiumEvidenceLine:
         )
 
         assert line.type == "SieveEvidenceLine"
-        assert line.directionOfEvidenceProvided == EvidenceDirection.supports.value
-        assert line.strengthOfEvidenceProvided == EvidenceStrength.moderate.value
-        assert line.scoreOfEvidenceProvided == 0.6
+        assert line.direction_of_evidence_provided == EvidenceDirection.supports.value
+        assert line.strength_of_evidence_provided == EvidenceStrength.moderate.value
+        assert line.score_of_evidence_provided == 0.6
 
     def test_contains_agent_contribution(self):
         """Test that evidence line contains AgentContribution."""
@@ -130,11 +130,11 @@ class TestCreateConsortiumEvidenceLine:
             version="v2024-01-01",
         )
 
-        assert len(line.hasEvidenceItems) == 1
-        item = line.hasEvidenceItems[0]
+        assert len(line.has_evidence_items) == 1
+        item = line.has_evidence_items[0]
         assert isinstance(item, AgentContribution)
         assert item.type == "AgentContribution"
-        assert item.evidenceItemType == EvidenceItemType.AgentContribution
+        assert item.evidence_item_type == EvidenceItemType.AgentContribution
 
     def test_consortium_agent(self):
         """Test that contribution is from Mondo consortium."""
@@ -143,7 +143,7 @@ class TestCreateConsortiumEvidenceLine:
             version="v2024-01-01",
         )
 
-        item = line.hasEvidenceItems[0]
+        item = line.has_evidence_items[0]
         assert item.contributor.id == "mondo:consortium"
         assert item.contributor.name == "Mondo Disease Ontology Consortium"
         assert item.contributor.subtype == "organization"
@@ -155,9 +155,9 @@ class TestCreateConsortiumEvidenceLine:
             version="v2024-01-01",
         )
 
-        item = line.hasEvidenceItems[0]
-        assert item.trustLevel == TrustLevel.authority
-        assert item.contributionType == ContributionType.decision
+        item = line.has_evidence_items[0]
+        assert item.trust_level == TrustLevel.authority
+        assert item.contribution_type == ContributionType.decision
 
 
 class TestCreateExpertEvidenceLine:
@@ -171,9 +171,9 @@ class TestCreateExpertEvidenceLine:
         )
 
         assert line.type == "SieveEvidenceLine"
-        assert line.directionOfEvidenceProvided == EvidenceDirection.supports.value
-        assert line.strengthOfEvidenceProvided == EvidenceStrength.strong.value
-        assert line.scoreOfEvidenceProvided == 0.8
+        assert line.direction_of_evidence_provided == EvidenceDirection.supports.value
+        assert line.strength_of_evidence_provided == EvidenceStrength.strong.value
+        assert line.score_of_evidence_provided == 0.8
 
     def test_contains_agent_contribution(self):
         """Test that evidence line contains AgentContribution."""
@@ -182,8 +182,8 @@ class TestCreateExpertEvidenceLine:
             entity_id="MONDO:0005015",
         )
 
-        assert len(line.hasEvidenceItems) == 1
-        item = line.hasEvidenceItems[0]
+        assert len(line.has_evidence_items) == 1
+        item = line.has_evidence_items[0]
         assert isinstance(item, AgentContribution)
         assert item.type == "AgentContribution"
 
@@ -194,7 +194,7 @@ class TestCreateExpertEvidenceLine:
             entity_id="MONDO:0005015",
         )
 
-        item = line.hasEvidenceItems[0]
+        item = line.has_evidence_items[0]
         assert item.contributor.id == "ORCID:0000-0001-5208-3432"
         assert item.contributor.subtype == "person"
 
@@ -205,9 +205,9 @@ class TestCreateExpertEvidenceLine:
             entity_id="MONDO:0005015",
         )
 
-        item = line.hasEvidenceItems[0]
-        assert item.trustLevel == TrustLevel.curator
-        assert item.contributionType == ContributionType.decision
+        item = line.has_evidence_items[0]
+        assert item.trust_level == TrustLevel.curator
+        assert item.contribution_type == ContributionType.decision
 
 
 class TestCreateCandidateLiteratureEvidenceLine:
@@ -221,10 +221,10 @@ class TestCreateCandidateLiteratureEvidenceLine:
         )
 
         assert line.type == "SieveEvidenceLine"
-        assert line.directionOfEvidenceProvided == EvidenceDirection.supports.value
+        assert line.direction_of_evidence_provided == EvidenceDirection.supports.value
         # Candidate literature has weak strength (unverified)
-        assert line.strengthOfEvidenceProvided == EvidenceStrength.weak.value
-        assert line.scoreOfEvidenceProvided == 0.4
+        assert line.strength_of_evidence_provided == EvidenceStrength.weak.value
+        assert line.score_of_evidence_provided == 0.4
 
     def test_contains_sieve_document(self):
         """Test that evidence line contains SieveDocument."""
@@ -233,8 +233,8 @@ class TestCreateCandidateLiteratureEvidenceLine:
             entity_id="MONDO:0005015",
         )
 
-        assert len(line.hasEvidenceItems) == 1
-        item = line.hasEvidenceItems[0]
+        assert len(line.has_evidence_items) == 1
+        item = line.has_evidence_items[0]
         assert isinstance(item, SieveDocument)
         assert item.type == "SieveDocument"
 
@@ -245,7 +245,7 @@ class TestCreateCandidateLiteratureEvidenceLine:
             entity_id="MONDO:0005015",
         )
 
-        item = line.hasEvidenceItems[0]
+        item = line.has_evidence_items[0]
         assert item.pmid == "12345678"
         assert item.urls == ["https://pubmed.ncbi.nlm.nih.gov/12345678/"]
 
@@ -256,7 +256,7 @@ class TestCreateCandidateLiteratureEvidenceLine:
             entity_id="MONDO:0005015",
         )
 
-        item = line.hasEvidenceItems[0]
+        item = line.has_evidence_items[0]
         assert item.subtype is not None
         assert isinstance(item.subtype, Coding)
         assert item.subtype.code == "candidate_reference"
@@ -270,7 +270,7 @@ class TestCreateCandidateLiteratureEvidenceLine:
             entity_id="MONDO:0005015",
         )
 
-        item = line.hasEvidenceItems[0]
+        item = line.has_evidence_items[0]
         assert "not yet verified" in item.description.lower()
 
 
@@ -321,7 +321,7 @@ class TestMondoExtraction:
         for entity in snapshot.entities:
             lines = evidence_by_entity[entity.id]
             assert len(lines) >= 1
-            items = lines[0].hasEvidenceItems or []
+            items = lines[0].has_evidence_items or []
             assert any(
                 isinstance(item, AgentContribution)
                 and item.contributor is not None

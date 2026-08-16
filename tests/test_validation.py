@@ -70,33 +70,33 @@ SAMPLE_SIEVE_PACKET = {
         "id": "stmt_sieve_001",
         "type": "SieveStatement",
         "subject": "MONDO:0011441",
-        "subjectLabel": "complex regional pain syndrome type 1",
+        "subject_label": "complex regional pain syndrome type 1",
         "predicate": {
             "code": "oio:hasExactSynonym",
             "label": "exact synonym",
             "system": "http://www.geneontology.org/formats/oboInOwl#",
         },
         "object": "Reflex sympathetic dystrophy",
-        "objectLabel": "Reflex sympathetic dystrophy",
+        "object_label": "Reflex sympathetic dystrophy",
     },
     "status": "UNREVIEWED",
-    "hasEvidenceLines": [
+    "has_evidence_lines": [
         {
             "id": "el_0000",
             "type": "SieveEvidenceLine",
-            "hasEvidenceItems": [
+            "has_evidence_items": [
                 {
                     "id": "ev_ordo_0001",
                     "type": "ConcordanceItem",
-                    "evidenceItemType": "ConcordanceItem",
-                    "sourceName": "Orphanet",
-                    "sourceSubject": "ORDO:12345",
+                    "evidence_item_type": "ConcordanceItem",
+                    "source_name": "Orphanet",
+                    "source_subject": "ORDO:12345",
                     "description": "Synonym from Orphanet (ORDO): 'Reflex sympathetic dystrophy'",
                 }
             ],
-            "directionOfEvidenceProvided": "supports",
-            "strengthOfEvidenceProvided": "strong",
-            "scoreOfEvidenceProvided": 0.9,
+            "direction_of_evidence_provided": "supports",
+            "strength_of_evidence_provided": "strong",
+            "score_of_evidence_provided": 0.9,
         }
     ],
     "evidence_synthesis": {
@@ -193,7 +193,7 @@ class TestConvertPacketToCurationRecordDict:
         assert assertion["predicate"] == "oio:hasExactSynonym"
         assert assertion["object_label"] == "Reflex sympathetic dystrophy"
 
-        # Check evidence (converted from hasEvidenceLines)
+        # Check evidence (converted from has_evidence_lines)
         assert len(result["evidence"]) == 1
         evidence = result["evidence"][0]
         assert evidence["id"] == "ev_ordo_0001"
@@ -213,7 +213,7 @@ class TestConvertPacketToCurationRecordDict:
                 },
                 "object": "test value",
             },
-            "hasEvidenceLines": [],
+            "has_evidence_lines": [],
             "status": "UNREVIEWED",
         }
         result = convert_packet_to_curation_record_dict(packet)

@@ -58,18 +58,18 @@ class TestFormatEvidenceSection:
         item = ConcordanceItem(
             id="ev_001",
             type="ConcordanceItem",
-            evidenceItemType=EvidenceItemType.ConcordanceItem,
-            sourceName="OMIM",
-            sourceSubject="OMIM:123456",
+            evidence_item_type=EvidenceItemType.ConcordanceItem,
+            source_name="OMIM",
+            source_subject="OMIM:123456",
             description="Cross-reference from OMIM",
         )
         line = SieveEvidenceLine(
             id="el_001",
             type="SieveEvidenceLine",
-            hasEvidenceItems=[item],
-            directionOfEvidenceProvided="supports",
-            strengthOfEvidenceProvided="strong",
-            scoreOfEvidenceProvided=1.0,
+            has_evidence_items=[item],
+            direction_of_evidence_provided="supports",
+            strength_of_evidence_provided="strong",
+            score_of_evidence_provided=1.0,
         )
         result = format_evidence_section([line])
         assert "ev_001" in result
@@ -89,10 +89,10 @@ class TestFormatEvidenceSection:
         line = SieveEvidenceLine(
             id="el_002",
             type="SieveEvidenceLine",
-            hasEvidenceItems=[item],
-            directionOfEvidenceProvided="supports",
-            strengthOfEvidenceProvided="moderate",
-            scoreOfEvidenceProvided=0.5,
+            has_evidence_items=[item],
+            direction_of_evidence_provided="supports",
+            strength_of_evidence_provided="moderate",
+            score_of_evidence_provided=0.5,
         )
         result = format_evidence_section([line])
         assert "ev_002" in result
@@ -106,29 +106,29 @@ class TestFormatEvidenceSection:
         item1 = ConcordanceItem(
             id="ev_001",
             type="ConcordanceItem",
-            evidenceItemType=EvidenceItemType.ConcordanceItem,
-            sourceName="OMIM",
-            sourceSubject="OMIM:123456",
+            evidence_item_type=EvidenceItemType.ConcordanceItem,
+            source_name="OMIM",
+            source_subject="OMIM:123456",
         )
         item2 = ConcordanceItem(
             id="ev_002",
             type="ConcordanceItem",
-            evidenceItemType=EvidenceItemType.ConcordanceItem,
-            sourceName="DOID",
-            sourceSubject="DOID:789",
+            evidence_item_type=EvidenceItemType.ConcordanceItem,
+            source_name="DOID",
+            source_subject="DOID:789",
         )
         lines = [
             SieveEvidenceLine(
                 id="el_001",
                 type="SieveEvidenceLine",
-                hasEvidenceItems=[item1],
-                directionOfEvidenceProvided="supports",
+                has_evidence_items=[item1],
+                direction_of_evidence_provided="supports",
             ),
             SieveEvidenceLine(
                 id="el_002",
                 type="SieveEvidenceLine",
-                hasEvidenceItems=[item2],
-                directionOfEvidenceProvided="disputes",
+                has_evidence_items=[item2],
+                direction_of_evidence_provided="disputes",
             ),
         ]
         result = format_evidence_section(lines)
@@ -144,31 +144,31 @@ class TestBuildSynthesisPrompt:
         item = ConcordanceItem(
             id="ev_001",
             type="ConcordanceItem",
-            evidenceItemType=EvidenceItemType.ConcordanceItem,
-            sourceName="OMIM",
-            sourceSubject="OMIM:123456",
+            evidence_item_type=EvidenceItemType.ConcordanceItem,
+            source_name="OMIM",
+            source_subject="OMIM:123456",
         )
         line = SieveEvidenceLine(
             id="el_001",
             type="SieveEvidenceLine",
-            hasEvidenceItems=[item],
-            directionOfEvidenceProvided="supports",
-            scoreOfEvidenceProvided=0.75,
+            has_evidence_items=[item],
+            direction_of_evidence_provided="supports",
+            score_of_evidence_provided=0.75,
         )
         stmt = SieveStatement(
             id="test_stmt_001",
             type="SieveStatement",
             subject="MONDO:0005015",
-            subjectLabel="diabetes mellitus",
+            subject_label="diabetes mellitus",
             predicate=predicate_to_coding(StatementPredicate.EXACT_SYNONYM),
             object="diabetes",
-            objectLabel="diabetes",
+            object_label="diabetes",
         )
         return EvidencePacket(
             id="test_pkt",
             statement=stmt,
             status=CurationStatus.UNREVIEWED,
-            hasEvidenceLines=[line],
+            has_evidence_lines=[line],
         )
 
     def test_builds_complete_prompt(self):
@@ -193,14 +193,14 @@ class TestBuildSynthesisPrompt:
     def test_handles_missing_label(self):
         """Test handling of missing subject label."""
         packet = self._make_packet()
-        packet.statement.subjectLabel = None
+        packet.statement.subject_label = None
         prompt = build_synthesis_prompt(packet)
         assert "Unknown" in prompt
 
     def test_handles_empty_evidence(self):
         """Test handling of empty evidence list."""
         packet = self._make_packet()
-        packet.hasEvidenceLines = []
+        packet.has_evidence_lines = []
         prompt = build_synthesis_prompt(packet)
         assert "*No evidence lines*" in prompt
 
