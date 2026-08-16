@@ -23,12 +23,12 @@ def main():
     print("MONDO-AI FULL PIPELINE RUN")
     print("=" * 60)
 
-    # Paths to source files
-    base_path = Path("/Users/matentzn/ws/mondo-ingest/src/ontology/tmp")
-    sssom_path = base_path / "mondo.sssom.tsv"
-    omim_path = base_path / "mirror-omim.owl"
-    ordo_path = base_path / "mirror-ordo.owl"
-    doid_path = base_path / "mirror-doid.owl"
+    # Paths to source files (local data/ acquisition dir)
+    data_path = Path("data")
+    sssom_path = data_path / "mondo.sssom.tsv"
+    omim_path = data_path / "owl" / "omim.owl"
+    ordo_path = data_path / "owl" / "ordo.owl"
+    doid_path = data_path / "owl" / "doid.owl"
 
     raw_store_dir = Path("packet_store")
     merged_store_dir = Path("packet_store_merged")
@@ -79,9 +79,9 @@ def main():
     merged_packets = merger.get_packets()
     print(f"    {len(packets)} raw -> {len(merged_packets)} merged packets")
 
-    multi_evidence = [p for p in merged_packets if len(p.hasEvidenceLines or []) >= 2]
+    multi_evidence = [p for p in merged_packets if len(p.has_evidence_lines or []) >= 2]
     print(f"    Packets with 2+ evidence lines: {len(multi_evidence)}")
-    triple_evidence = [p for p in merged_packets if len(p.hasEvidenceLines or []) >= 3]
+    triple_evidence = [p for p in merged_packets if len(p.has_evidence_lines or []) >= 3]
     print(f"    Packets with 3+ evidence lines: {len(triple_evidence)}")
 
     # Step 4: Export merged packets to JSONL store
@@ -115,19 +115,19 @@ def main():
         print("\n" + "-" * 60)
         print("SAMPLE MULTI-EVIDENCE PACKET:")
         print("-" * 60)
-        sample = sorted(multi_evidence, key=lambda p: len(p.hasEvidenceLines or []), reverse=True)[0]
+        sample = sorted(multi_evidence, key=lambda p: len(p.has_evidence_lines or []), reverse=True)[0]
         pred = sample.statement.predicate
         pred_label = pred.label if pred else "?"
         print(f"ID: {sample.id}")
-        print(f"Statement: {sample.statement.subjectLabel} [{pred_label}] '{sample.statement.object}'")
-        print(f"Evidence lines: {len(sample.hasEvidenceLines or [])}")
-        for el in sample.hasEvidenceLines or []:
+        print(f"Statement: {sample.statement.subject_label} [{pred_label}] '{sample.statement.object}'")
+        print(f"Evidence lines: {len(sample.has_evidence_lines or [])}")
+        for el in sample.has_evidence_lines or []:
             src = "?"
-            for item in el.hasEvidenceItems or []:
-                src = getattr(item, "sourceId", getattr(item, "sourceName", "?"))
-            print(f"  - {src}: direction={el.directionOfEvidenceProvided}, "
-                  f"strength={el.strengthOfEvidenceProvided}, "
-                  f"score={el.scoreOfEvidenceProvided}")
+            for item in el.has_evidence_items or []:
+                src = getattr(item, "source_id", getattr(item, "source_name", "?"))
+            print(f"  - {src}: direction={el.direction_of_evidence_provided}, "
+                  f"strength={el.strength_of_evidence_provided}, "
+                  f"score={el.score_of_evidence_provided}")
 
     print(f"\nMerged store: {merged_store_dir.absolute()}/")
     print(f"Stats: {stats_path.absolute()}")
