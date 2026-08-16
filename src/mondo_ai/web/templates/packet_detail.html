@@ -4,8 +4,8 @@
 <div class="detail-header">
     <a href="/packets" style="font-size:0.85rem;">&laquo; Back to list</a>
     <h1 style="margin-top:0.5rem;">
-        {% if packet.statement and packet.statement.subjectLabel %}
-            {{ packet.statement.subjectLabel }}
+        {% if packet.statement and packet.statement.subject_label %}
+            {{ packet.statement.subject_label }}
         {% else %}
             Evidence Packet
         {% endif %}
@@ -21,7 +21,7 @@
     <div class="field-grid">
         <span class="field-label">Subject</span>
         <span>
-            {% if stmt.subjectLabel %}{{ stmt.subjectLabel }} {% endif %}
+            {% if stmt.subject_label %}{{ stmt.subject_label }} {% endif %}
             <span class="text-muted" style="font-family:var(--mono); font-size:0.85rem;">{{ stmt.subject or '' }}</span>
         </span>
         <span class="field-label">Predicate</span>
@@ -35,14 +35,14 @@
         </span>
         <span class="field-label">Object</span>
         <span>
-            {% if stmt.objectLabel %}{{ stmt.objectLabel }} {% endif %}
-            {% if stmt.object and stmt.object != stmt.objectLabel %}
+            {% if stmt.object_label %}{{ stmt.object_label }} {% endif %}
+            {% if stmt.object and stmt.object != stmt.object_label %}
             <span class="text-muted" style="font-family:var(--mono); font-size:0.85rem;">{{ stmt.object }}</span>
             {% endif %}
         </span>
-        {% if stmt.statementText %}
+        {% if stmt.statement_text %}
         <span class="field-label">Text</span>
-        <span>{{ stmt.statementText }}</span>
+        <span>{{ stmt.statement_text }}</span>
         {% endif %}
     </div>
     {% endif %}
@@ -93,7 +93,7 @@
 {% endif %}
 
 <!-- Evidence Lines -->
-{% set lines = packet.hasEvidenceLines or [] %}
+{% set lines = packet.has_evidence_lines or [] %}
 {% if lines %}
 <div class="card">
     <h2>Evidence Lines ({{ lines|length }})</h2>
@@ -101,18 +101,18 @@
     <div style="margin-bottom: 1.5rem; {% if not loop.last %}border-bottom: 1px solid var(--border); padding-bottom: 1rem;{% endif %}">
         <div style="display: flex; gap: 0.75rem; align-items: center; margin-bottom: 0.5rem;">
             <strong>Line {{ loop.index }}</strong>
-            {% if el.directionOfEvidenceProvided %}
-            <span class="badge badge-direction-{{ el.directionOfEvidenceProvided }}">{{ el.directionOfEvidenceProvided }}</span>
+            {% if el.direction_of_evidence_provided %}
+            <span class="badge badge-direction-{{ el.direction_of_evidence_provided }}">{{ el.direction_of_evidence_provided }}</span>
             {% endif %}
-            {% if el.strengthOfEvidenceProvided %}
-            <span class="badge" style="background:#e9ecef;">{{ el.strengthOfEvidenceProvided }}</span>
+            {% if el.strength_of_evidence_provided %}
+            <span class="badge" style="background:#e9ecef;">{{ el.strength_of_evidence_provided }}</span>
             {% endif %}
-            {% if el.scoreOfEvidenceProvided is not none %}
-            <span class="text-muted" style="font-size:0.85rem;">Score: {{ "%.3f"|format(el.scoreOfEvidenceProvided) }}</span>
+            {% if el.score_of_evidence_provided is not none %}
+            <span class="text-muted" style="font-size:0.85rem;">Score: {{ "%.3f"|format(el.score_of_evidence_provided) }}</span>
             {% endif %}
         </div>
 
-        {% for item in el.hasEvidenceItems or [] %}
+        {% for item in el.has_evidence_items or [] %}
         {% set item_type = item.type or item.__class__.__name__ %}
         {% if 'Concordance' in item_type %}
             {% set item_class = 'concordance' %}
@@ -129,32 +129,32 @@
         <div class="evidence-item {{ item_class }}">
             <div style="font-weight:600; font-size:0.85rem; margin-bottom:0.4rem;">
                 {{ item_type }}
-                {% if item.evidenceItemType %}
-                <span class="text-muted" style="font-weight:400;">({{ item.evidenceItemType }})</span>
+                {% if item.evidence_item_type %}
+                <span class="text-muted" style="font-weight:400;">({{ item.evidence_item_type }})</span>
                 {% endif %}
             </div>
 
             {% if 'Concordance' in item_type %}
             <div class="field-grid" style="font-size:0.85rem;">
-                {% if item.sourceName %}
+                {% if item.source_name %}
                 <span class="field-label">Source</span>
-                <span>{{ item.sourceName }}{% if item.sourceVersion %} ({{ item.sourceVersion }}){% endif %}</span>
+                <span>{{ item.source_name }}{% if item.source_version %} ({{ item.source_version }}){% endif %}</span>
                 {% endif %}
-                {% if item.sourceSubject %}
+                {% if item.source_subject %}
                 <span class="field-label">Subject</span>
-                <span>{{ item.sourceSubjectLabel or '' }} <span class="text-muted" style="font-family:var(--mono);">{{ item.sourceSubject }}</span></span>
+                <span>{{ item.source_subject_label or '' }} <span class="text-muted" style="font-family:var(--mono);">{{ item.source_subject }}</span></span>
                 {% endif %}
-                {% if item.sourcePredicate %}
+                {% if item.source_predicate %}
                 <span class="field-label">Predicate</span>
-                <span>{{ item.sourcePredicateLabel or item.sourcePredicate }}</span>
+                <span>{{ item.source_predicate_label or item.source_predicate }}</span>
                 {% endif %}
-                {% if item.sourceObject %}
+                {% if item.source_object %}
                 <span class="field-label">Object</span>
-                <span>{{ item.sourceObjectLabel or item.sourceObject }}</span>
+                <span>{{ item.source_object_label or item.source_object }}</span>
                 {% endif %}
-                {% if item.mappingJustification %}
+                {% if item.mapping_justification %}
                 <span class="field-label">Justification</span>
-                <span style="font-family:var(--mono); font-size:0.8rem;">{{ item.mappingJustification }}</span>
+                <span style="font-family:var(--mono); font-size:0.8rem;">{{ item.mapping_justification }}</span>
                 {% endif %}
             </div>
 
@@ -180,9 +180,9 @@
                 <span class="field-label">Contributor</span>
                 <span>{{ item.contributor.name or item.contributor.id }}</span>
                 {% endif %}
-                {% if item.trustLevel %}
+                {% if item.trust_level %}
                 <span class="field-label">Trust Level</span>
-                <span>{{ item.trustLevel }}</span>
+                <span>{{ item.trust_level }}</span>
                 {% endif %}
                 {% if item.channel %}
                 <span class="field-label">Channel</span>
@@ -196,17 +196,17 @@
 
             {% elif 'Computational' in item_type %}
             <div class="field-grid" style="font-size:0.85rem;">
-                {% if item.methodName %}
+                {% if item.method_name %}
                 <span class="field-label">Method</span>
-                <span>{{ item.methodName }}</span>
+                <span>{{ item.method_name }}</span>
                 {% endif %}
                 {% if item.value %}
                 <span class="field-label">Value</span>
                 <span>{{ item.value }}</span>
                 {% endif %}
-                {% if item.softwareVersion %}
+                {% if item.software_version %}
                 <span class="field-label">Version</span>
-                <span>{{ item.softwareVersion }}</span>
+                <span>{{ item.software_version }}</span>
                 {% endif %}
             </div>
 
