@@ -73,17 +73,17 @@ Public classes are re-exported from `mondo_ai.datamodel` (`__init__.py`).
 EvidencePacket
 ├── id                       deterministic (pkt_<hash>)
 ├── statement: SieveStatement
-│   ├── subject / subjectLabel      Mondo term (e.g. MONDO:0005015)
+│   ├── subject / subject_label      Mondo term (e.g. MONDO:0005015)
 │   ├── predicate: Coding           OWL predicate as a SEPIO Coding
-│   ├── object / objectLabel        synonym text, parent term, etc.
-│   └── statementText
-├── hasEvidenceLines: [SieveEvidenceLine]
-│   ├── hasEvidenceItems: [InformationEntity subclass]
+│   ├── object / object_label        synonym text, parent term, etc.
+│   └── statement_text
+├── has_evidence_lines: [SieveEvidenceLine]
+│   ├── has_evidence_items: [InformationEntity subclass]
 │   │     ConcordanceItem | SieveDocument | SieveDataItem |
 │   │     SieveStudyResult | ComputationalResult | AgentContribution
-│   ├── directionOfEvidenceProvided   supports | disputes | neutral
-│   ├── strengthOfEvidenceProvided    strong | moderate | weak
-│   └── scoreOfEvidenceProvided       float
+│   ├── direction_of_evidence_provided   supports | disputes | neutral
+│   ├── strength_of_evidence_provided    strong | moderate | weak
+│   └── score_of_evidence_provided       float
 ├── evidence_synthesis: EvidenceSynthesis | None   (score, direction, summary)
 ├── status: CurationStatus            UNREVIEWED (default), ACCEPTED, REJECTED, …
 └── created / updated
@@ -142,7 +142,7 @@ and does not reach — packets).
 NER = (S⁺ − S⁻) / (S⁺ + S⁻ + S⁰)          range [-1, +1]
 ```
 
-where S⁺/S⁻/S⁰ are the summed `scoreOfEvidenceProvided` over supporting /
+where S⁺/S⁻/S⁰ are the summed `score_of_evidence_provided` over supporting /
 disputing / neutral evidence lines. Recommendation thresholds (configurable):
 NER ≥ 0.7 → ACCEPT, NER ≤ −0.3 → REJECT, otherwise REVIEW. Per-source,
 per-content-type weights come from `ContentWeights` in the config.

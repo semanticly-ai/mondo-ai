@@ -1,6 +1,6 @@
 Update system design:
 
-- [x] mappingJustification in ConcordanceItem now uses the `mapping_set_id` from SSSOM metadata (e.g., `http://purl.obolibrary.org/obo/mondo/mappings/mondo.sssom.tsv`)
+- [x] mapping_justification in ConcordanceItem now uses the `mapping_set_id` from SSSOM metadata (e.g., `http://purl.obolibrary.org/obo/mondo/mappings/mondo.sssom.tsv`)
 - [x] In config.yaml individual content_weights for each content type in each source. For example, `exact_synonym: 0.95` in omim.
 - [x] If a jsonl file increases beyond 50MB it is ok (soft limit) - but throws error if size exceeds 90MB (hard limit)
 - [x] Removed "predicate_weights" from scoring config - weights are now per-source in content_weights
