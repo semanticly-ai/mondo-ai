@@ -102,11 +102,11 @@ class StatementBuilder:
             id=statement_id,
             type="SieveStatement",
             subject=mondo_id,
-            subjectLabel=mondo_label,
+            subject_label=mondo_label,
             predicate=predicate_to_coding(predicate),
             object=synonym.value,
-            objectLabel=synonym.value,
-            statementText=f"{mondo_label or mondo_id} has {predicate.value.lower().replace('_', ' ')} '{synonym.value}'",
+            object_label=synonym.value,
+            statement_text=f"{mondo_label or mondo_id} has {predicate.value.lower().replace('_', ' ')} '{synonym.value}'",
         )
 
     def build_parent_statement(
@@ -147,11 +147,11 @@ class StatementBuilder:
             id=statement_id,
             type="SieveStatement",
             subject=mondo_child,
-            subjectLabel=child_label,
+            subject_label=child_label,
             predicate=predicate_to_coding(StatementPredicate.PARENT),
             object=mondo_parent,
-            objectLabel=parent_label,
-            statementText=f"{child_label or mondo_child} is a subclass of {parent_label}",
+            object_label=parent_label,
+            statement_text=f"{child_label or mondo_child} is a subclass of {parent_label}",
         )
 
     def build_statements_from_snapshot(

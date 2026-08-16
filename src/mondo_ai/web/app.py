@@ -71,10 +71,10 @@ def _packet_summary(packet: Any) -> dict[str, Any]:
     # Collect source IDs from evidence items
     sources: list[str] = []
     n_evidence = 0
-    for el in packet.hasEvidenceLines or []:
+    for el in packet.has_evidence_lines or []:
         n_evidence += 1
-        for item in el.hasEvidenceItems or []:
-            src = getattr(item, "sourceId", None)
+        for item in el.has_evidence_items or []:
+            src = getattr(item, "source_id", None)
             if src and src not in sources:
                 sources.append(src)
 
@@ -86,18 +86,18 @@ def _packet_summary(packet: Any) -> dict[str, Any]:
         direction = packet.evidence_synthesis.direction
 
     # Get score from first evidence line as fallback
-    if score is None and packet.hasEvidenceLines:
-        first_line = (packet.hasEvidenceLines or [None])[0]
-        if first_line and first_line.scoreOfEvidenceProvided is not None:
-            score = first_line.scoreOfEvidenceProvided
+    if score is None and packet.has_evidence_lines:
+        first_line = (packet.has_evidence_lines or [None])[0]
+        if first_line and first_line.score_of_evidence_provided is not None:
+            score = first_line.score_of_evidence_provided
 
     return {
         "id": packet.id,
         "subject": stmt.subject if stmt else "",
-        "subject_label": stmt.subjectLabel if stmt else "",
+        "subject_label": stmt.subject_label if stmt else "",
         "predicate": predicate_label,
         "object": stmt.object if stmt else "",
-        "object_label": stmt.objectLabel if stmt else "",
+        "object_label": stmt.object_label if stmt else "",
         "status": str(packet.status) if packet.status else "UNREVIEWED",
         "sources": sources,
         "n_evidence": n_evidence,

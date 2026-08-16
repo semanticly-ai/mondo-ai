@@ -207,22 +207,22 @@ class PacketBuilder:
         concordance_item = ConcordanceItem(
             id=item_id,
             type="ConcordanceItem",
-            evidenceItemType=EvidenceItemType.ConcordanceItem,
-            sourceName=source_name,
-            sourceId=source_id,
-            sourceSubject=source_entity_id,
-            sourceSubjectLabel=source_entity_label,
-            mappingJustification=mapping_justification,
+            evidence_item_type=EvidenceItemType.ConcordanceItem,
+            source_name=source_name,
+            source_id=source_id,
+            source_subject=source_entity_id,
+            source_subject_label=source_entity_label,
+            mapping_justification=mapping_justification,
             description=f"Concordance evidence from {source_name}",
         )
 
         return SieveEvidenceLine(
             id=line_id,
             type="SieveEvidenceLine",
-            hasEvidenceItems=[concordance_item],
-            directionOfEvidenceProvided=EvidenceDirection.supports.value,
-            strengthOfEvidenceProvided=_score_to_strength(evidence_score),
-            scoreOfEvidenceProvided=evidence_score,
+            has_evidence_items=[concordance_item],
+            direction_of_evidence_provided=EvidenceDirection.supports.value,
+            strength_of_evidence_provided=_score_to_strength(evidence_score),
+            score_of_evidence_provided=evidence_score,
         )
 
     def _create_orcid_evidence_line(
@@ -248,20 +248,20 @@ class PacketBuilder:
         contribution = AgentContribution(
             id=item_id,
             type="AgentContribution",
-            evidenceItemType=EvidenceItemType.AgentContribution,
+            evidence_item_type=EvidenceItemType.AgentContribution,
             contributor=agent,
-            trustLevel=TrustLevel.curator,
-            contributionType=ContributionType.decision,
+            trust_level=TrustLevel.curator,
+            contribution_type=ContributionType.decision,
             description=f"Expert {annotation_type} contribution by {orcid}",
         )
 
         return SieveEvidenceLine(
             id=line_id,
             type="SieveEvidenceLine",
-            hasEvidenceItems=[contribution],
-            directionOfEvidenceProvided=EvidenceDirection.supports.value,
-            strengthOfEvidenceProvided=_score_to_strength(ORCID_EXPERT_SCORE),
-            scoreOfEvidenceProvided=ORCID_EXPERT_SCORE,
+            has_evidence_items=[contribution],
+            direction_of_evidence_provided=EvidenceDirection.supports.value,
+            strength_of_evidence_provided=_score_to_strength(ORCID_EXPERT_SCORE),
+            score_of_evidence_provided=ORCID_EXPERT_SCORE,
         )
 
     def _create_pmid_evidence_line(
@@ -301,10 +301,10 @@ class PacketBuilder:
         return SieveEvidenceLine(
             id=line_id,
             type="SieveEvidenceLine",
-            hasEvidenceItems=[document],
-            directionOfEvidenceProvided=EvidenceDirection.supports.value,
-            strengthOfEvidenceProvided=_score_to_strength(PMID_CANDIDATE_SCORE),
-            scoreOfEvidenceProvided=PMID_CANDIDATE_SCORE,
+            has_evidence_items=[document],
+            direction_of_evidence_provided=EvidenceDirection.supports.value,
+            strength_of_evidence_provided=_score_to_strength(PMID_CANDIDATE_SCORE),
+            score_of_evidence_provided=PMID_CANDIDATE_SCORE,
         )
 
     def _create_consortium_evidence_line(
@@ -331,20 +331,20 @@ class PacketBuilder:
         contribution = AgentContribution(
             id=item_id,
             type="AgentContribution",
-            evidenceItemType=EvidenceItemType.AgentContribution,
+            evidence_item_type=EvidenceItemType.AgentContribution,
             contributor=MONDO_CONSORTIUM,
-            trustLevel=TrustLevel.authority,
-            contributionType=ContributionType.decision,
+            trust_level=TrustLevel.authority,
+            contribution_type=ContributionType.decision,
             description=f"Mondo consortium inclusion decision{version_info}",
         )
 
         return SieveEvidenceLine(
             id=line_id,
             type="SieveEvidenceLine",
-            hasEvidenceItems=[contribution],
-            directionOfEvidenceProvided=EvidenceDirection.supports.value,
-            strengthOfEvidenceProvided=_score_to_strength(CONSORTIUM_DECISION_SCORE),
-            scoreOfEvidenceProvided=CONSORTIUM_DECISION_SCORE,
+            has_evidence_items=[contribution],
+            direction_of_evidence_provided=EvidenceDirection.supports.value,
+            strength_of_evidence_provided=_score_to_strength(CONSORTIUM_DECISION_SCORE),
+            score_of_evidence_provided=CONSORTIUM_DECISION_SCORE,
         )
 
     def build_packet(
@@ -445,7 +445,7 @@ class PacketBuilder:
             id=packet_id,
             statement=statement,
             status=CurationStatus.UNREVIEWED,
-            hasEvidenceLines=evidence_lines,
+            has_evidence_lines=evidence_lines,
             created=date.today(),
         )
 
@@ -486,20 +486,20 @@ class PacketBuilder:
         Returns:
             Updated packet with additional evidence.
         """
-        if packet.hasEvidenceLines is None:
-            packet.hasEvidenceLines = []
+        if packet.has_evidence_lines is None:
+            packet.has_evidence_lines = []
 
         # For Mondo source: consortium decision instead of concordance
         # For external sources: concordance evidence
         if is_mondo_source:
-            packet.hasEvidenceLines.append(
+            packet.has_evidence_lines.append(
                 self._create_consortium_evidence_line(
                     packet_id=packet.id,
                     source_version=source_version,
                 )
             )
         else:
-            packet.hasEvidenceLines.append(
+            packet.has_evidence_lines.append(
                 self._create_concordance_evidence_line(
                     packet_id=packet.id,
                     source_id=source_id,
@@ -514,7 +514,7 @@ class PacketBuilder:
         # Add ORCID expert evidence lines
         if orcids:
             for orcid in orcids:
-                packet.hasEvidenceLines.append(
+                packet.has_evidence_lines.append(
                     self._create_orcid_evidence_line(
                         packet_id=packet.id,
                         orcid=orcid,
@@ -524,7 +524,7 @@ class PacketBuilder:
         # Add PMID candidate literature evidence lines
         if pmids:
             for pmid in pmids:
-                packet.hasEvidenceLines.append(
+                packet.has_evidence_lines.append(
                     self._create_pmid_evidence_line(
                         packet_id=packet.id,
                         pmid=pmid,
@@ -547,10 +547,10 @@ class PacketMerger:
         stmt_id = packet.statement.id
         if stmt_id in self._packets_by_statement:
             existing = self._packets_by_statement[stmt_id]
-            if packet.hasEvidenceLines:
-                if existing.hasEvidenceLines is None:
-                    existing.hasEvidenceLines = []
-                existing.hasEvidenceLines.extend(packet.hasEvidenceLines)
+            if packet.has_evidence_lines:
+                if existing.has_evidence_lines is None:
+                    existing.has_evidence_lines = []
+                existing.has_evidence_lines.extend(packet.has_evidence_lines)
                 existing.updated = date.today()
         else:
             self._packets_by_statement[stmt_id] = packet

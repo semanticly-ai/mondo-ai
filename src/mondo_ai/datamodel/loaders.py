@@ -12,22 +12,26 @@ import yaml
 from pydantic import BaseModel
 
 from mondo_ai.datamodel.sieve_models import (
+    AgentContribution,
     ConcordanceItem,
     EvidencePacket,
     SieveDataItem,
     SieveDocument,
     SieveStudyResult,
     ComputationalResult,
+    TextMiningResult,
 )
 
 
 # Map type strings to classes
 EVIDENCE_ITEM_TYPES: dict[str, type[BaseModel]] = {
     "ConcordanceItem": ConcordanceItem,
+    "AgentContribution": AgentContribution,
     "SieveDocument": SieveDocument,
     "SieveDataItem": SieveDataItem,
     "SieveStudyResult": SieveStudyResult,
     "ComputationalResult": ComputationalResult,
+    "TextMiningResult": TextMiningResult,
     # Also handle base type names
     "Document": SieveDocument,
     "DataItem": SieveDataItem,
@@ -47,15 +51,15 @@ def _convert_evidence_items(data: dict[str, Any]) -> dict[str, Any]:
     Returns:
         Data dict with evidence items converted to proper typed objects.
     """
-    if "hasEvidenceLines" not in data or not data["hasEvidenceLines"]:
+    if "has_evidence_lines" not in data or not data["has_evidence_lines"]:
         return data
 
-    for line in data["hasEvidenceLines"]:
-        if "hasEvidenceItems" not in line or not line["hasEvidenceItems"]:
+    for line in data["has_evidence_lines"]:
+        if "has_evidence_items" not in line or not line["has_evidence_items"]:
             continue
 
         converted_items: list[Any] = []
-        for item in line["hasEvidenceItems"]:
+        for item in line["has_evidence_items"]:
             if isinstance(item, dict):
                 item_type = item.get("type", "")
                 item_class = EVIDENCE_ITEM_TYPES.get(item_type)
@@ -68,9 +72,21 @@ def _convert_evidence_items(data: dict[str, Any]) -> dict[str, Any]:
             else:
                 converted_items.append(item)
 
-        line["hasEvidenceItems"] = converted_items
+        line["has_evidence_items"] = converted_items
 
     return data
+
+
+def packet_from_dict(data: dict[str, Any]) -> EvidencePacket:
+    """Build an EvidencePacket from a raw dict, dispatching evidence items.
+
+    Args:
+        data: Raw packet data dict (e.g. parsed from YAML/JSON).
+
+    Returns:
+        EvidencePacket instance with evidence items as their concrete subclasses.
+    """
+    return EvidencePacket.model_validate(_convert_evidence_items(dict(data)))
 
 
 def load_packet(path: Path | str) -> EvidencePacket:
@@ -89,10 +105,7 @@ def load_packet(path: Path | str) -> EvidencePacket:
     with open(path) as f:
         data = yaml.safe_load(f)
 
-    # Convert evidence items to proper types
-    data = _convert_evidence_items(data)
-
-    return EvidencePacket.model_validate(data)
+    return packet_from_dict(data)
 
 
 def load_packets(path: Path | str, pattern: str = "pkt_*.yaml") -> list[EvidencePacket]:

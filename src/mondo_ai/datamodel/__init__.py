@@ -21,6 +21,7 @@ from mondo_ai.datamodel.sieve_models import (
     SieveStudyResult,
     ComputationalResult,
     AgentContribution,
+    TextMiningResult,
     # SEPIO base classes
     Entity,
     InformationEntity,
@@ -97,6 +98,7 @@ __all__ = [
     "SieveStudyResult",
     "ComputationalResult",
     "AgentContribution",
+    "TextMiningResult",
     # SEPIO base classes
     "Entity",
     "InformationEntity",

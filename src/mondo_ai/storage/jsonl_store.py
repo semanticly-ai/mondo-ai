@@ -491,18 +491,18 @@ class JSONLPacketStore:
 
         # Merge evidence lines - avoid duplicates by ID
         existing_ids = set()
-        if packet.hasEvidenceLines:
-            for line in packet.hasEvidenceLines:
+        if packet.has_evidence_lines:
+            for line in packet.has_evidence_lines:
                 if line.id:
                     existing_ids.add(line.id)
         else:
-            packet.hasEvidenceLines = []
+            packet.has_evidence_lines = []
 
         added_count = 0
         for new_line in new_evidence_lines:
             if new_line.id and new_line.id in existing_ids:
                 continue  # Skip duplicate
-            packet.hasEvidenceLines.append(new_line)
+            packet.has_evidence_lines.append(new_line)
             existing_ids.add(new_line.id)
             added_count += 1
 

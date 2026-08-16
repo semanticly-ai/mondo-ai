@@ -143,7 +143,7 @@ def compute_stats(packets: Iterable["EvidencePacket"]) -> PacketStats:
         total_packets += 1
 
         # Evidence lines per packet
-        n_lines = len(packet.hasEvidenceLines or [])
+        n_lines = len(packet.has_evidence_lines or [])
         evidence_count_counter[str(n_lines)] += 1
 
         # Subject
@@ -165,32 +165,32 @@ def compute_stats(packets: Iterable["EvidencePacket"]) -> PacketStats:
         status_counter[status_str] += 1
 
         # Evidence lines
-        for el in packet.hasEvidenceLines or []:
+        for el in packet.has_evidence_lines or []:
             total_lines += 1
 
             # Direction
-            if el.directionOfEvidenceProvided:
-                direction_counter[el.directionOfEvidenceProvided] += 1
+            if el.direction_of_evidence_provided:
+                direction_counter[el.direction_of_evidence_provided] += 1
 
             # Strength
-            if el.strengthOfEvidenceProvided:
-                strength_counter[el.strengthOfEvidenceProvided] += 1
+            if el.strength_of_evidence_provided:
+                strength_counter[el.strength_of_evidence_provided] += 1
 
             # Score bucket
-            if el.scoreOfEvidenceProvided is not None:
-                score_counter[_score_bucket(el.scoreOfEvidenceProvided)] += 1
+            if el.score_of_evidence_provided is not None:
+                score_counter[_score_bucket(el.score_of_evidence_provided)] += 1
 
             # Evidence items
-            for item in el.hasEvidenceItems or []:
+            for item in el.has_evidence_items or []:
                 total_items += 1
 
                 # Source (from ConcordanceItem)
-                source_id = getattr(item, "sourceId", None)
+                source_id = getattr(item, "source_id", None)
                 if source_id:
                     source_counter[source_id] += 1
 
                 # Item type
-                item_type = getattr(item, "evidenceItemType", None)
+                item_type = getattr(item, "evidence_item_type", None)
                 if item_type:
                     type_str = item_type.value if hasattr(item_type, "value") else str(item_type)
                     item_type_counter[type_str] += 1

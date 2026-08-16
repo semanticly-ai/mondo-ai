@@ -113,8 +113,8 @@ def _is_sieve_format(packet_data: dict[str, Any]) -> bool:
     """Check if packet is in SIEVE format."""
     statement = packet_data.get("statement", {})
     # SIEVE format uses 'subject' instead of 'subject_mondo_id'
-    # and 'hasEvidenceLines' instead of 'evidence'
-    return "subject" in statement or "hasEvidenceLines" in packet_data
+    # and 'has_evidence_lines' instead of 'evidence'
+    return "subject" in statement or "has_evidence_lines" in packet_data
 
 
 def _convert_sieve_packet(packet_data: dict[str, Any]) -> dict[str, Any]:
@@ -134,7 +134,7 @@ def _convert_sieve_packet(packet_data: dict[str, Any]) -> dict[str, Any]:
     predicate_label = predicate.get("label", str(predicate)) if isinstance(predicate, dict) else predicate
 
     # Get object value
-    object_value = statement.get("object", "") or statement.get("objectLabel", "")
+    object_value = statement.get("object", "") or statement.get("object_label", "")
     object_id = statement.get("objectId")
 
     # If no object_id, use object_value as a literal identifier
@@ -144,26 +144,26 @@ def _convert_sieve_packet(packet_data: dict[str, Any]) -> dict[str, Any]:
     # Build assertion in CurationRecord format
     assertion = {
         "subject_id": statement.get("subject"),
-        "subject_label": statement.get("subjectLabel"),
+        "subject_label": statement.get("subject_label"),
         "predicate": predicate_curie,
         "predicate_label": predicate_label,
         "object_id": object_id or object_value,
         "object_label": object_value,
-        "display_text": f"{statement.get('subjectLabel', '')} {predicate_label} {object_value}",
+        "display_text": f"{statement.get('subject_label', '')} {predicate_label} {object_value}",
     }
 
-    # Build evidence items from SIEVE hasEvidenceLines
+    # Build evidence items from SIEVE has_evidence_lines
     evidence_items = []
-    for line in packet_data.get("hasEvidenceLines", []):
-        direction = line.get("directionOfEvidenceProvided", "supports")
+    for line in packet_data.get("has_evidence_lines", []):
+        direction = line.get("direction_of_evidence_provided", "supports")
         # Map SIEVE direction to uppercase
         direction_map = {"supports": "SUPPORTS", "disputes": "CONTRADICTS", "neutral": "UNCERTAIN"}
         direction = direction_map.get(direction, direction.upper() if direction else "SUPPORTS")
 
-        strength = line.get("scoreOfEvidenceProvided", 1.0)
+        strength = line.get("score_of_evidence_provided", 1.0)
 
-        for item in line.get("hasEvidenceItems", []):
-            item_type = item.get("evidenceItemType") or item.get("type", "OTHER")
+        for item in line.get("has_evidence_items", []):
+            item_type = item.get("evidence_item_type") or item.get("type", "OTHER")
             if isinstance(item_type, dict):
                 item_type = item_type.get("value", "OTHER")
 
@@ -182,12 +182,12 @@ def _convert_sieve_packet(packet_data: dict[str, Any]) -> dict[str, Any]:
 
             # Add ConcordanceItem-specific fields
             if item_type == "ConcordanceItem":
-                if item.get("sourceName"):
-                    record_ev["source_name"] = item.get("sourceName")
-                if item.get("sourceSubject"):
-                    record_ev["source_subject_id"] = item.get("sourceSubject")
-                if item.get("sourceSubjectLabel"):
-                    record_ev["source_subject_label"] = item.get("sourceSubjectLabel")
+                if item.get("source_name"):
+                    record_ev["source_name"] = item.get("source_name")
+                if item.get("source_subject"):
+                    record_ev["source_subject_id"] = item.get("source_subject")
+                if item.get("source_subject_label"):
+                    record_ev["source_subject_label"] = item.get("source_subject_label")
                 record_ev["source_type"] = "ONTOLOGY"
 
             # Add SieveDocument-specific fields

@@ -61,17 +61,17 @@ def format_evidence_line(line) -> str:
     """
     output = []
     output.append(f"### Evidence Line: {line.id}")
-    output.append(f"- Direction: {line.directionOfEvidenceProvided or 'supports'}")
-    output.append(f"- Strength: {line.strengthOfEvidenceProvided or 'moderate'}")
-    output.append(f"- Score: {line.scoreOfEvidenceProvided or 1.0}")
+    output.append(f"- Direction: {line.direction_of_evidence_provided or 'supports'}")
+    output.append(f"- Strength: {line.strength_of_evidence_provided or 'moderate'}")
+    output.append(f"- Score: {line.score_of_evidence_provided or 1.0}")
 
     # Format evidence items within this line
-    if line.hasEvidenceItems:
-        for item in line.hasEvidenceItems:
+    if line.has_evidence_items:
+        for item in line.has_evidence_items:
             output.append(f"\n  #### Evidence Item: {item.id}")
 
             # Get item type
-            item_type = getattr(item, "evidenceItemType", None)
+            item_type = getattr(item, "evidence_item_type", None)
             if item_type:
                 if hasattr(item_type, "value"):
                     item_type = item_type.value
@@ -82,12 +82,12 @@ def format_evidence_line(line) -> str:
                 output.append(f"  - Description: {item.description}")
 
             # ConcordanceItem fields
-            if hasattr(item, "sourceName") and item.sourceName:
-                output.append(f"  - Source: {item.sourceName}")
-            if hasattr(item, "sourceSubject") and item.sourceSubject:
-                output.append(f"  - Source Subject: {item.sourceSubject}")
-            if hasattr(item, "sourceSubjectLabel") and item.sourceSubjectLabel:
-                output.append(f"  - Source Label: {item.sourceSubjectLabel}")
+            if hasattr(item, "source_name") and item.source_name:
+                output.append(f"  - Source: {item.source_name}")
+            if hasattr(item, "source_subject") and item.source_subject:
+                output.append(f"  - Source Subject: {item.source_subject}")
+            if hasattr(item, "source_subject_label") and item.source_subject_label:
+                output.append(f"  - Source Label: {item.source_subject_label}")
 
             # SieveDocument fields
             if hasattr(item, "title") and item.title:
@@ -144,20 +144,20 @@ def build_synthesis_prompt(packet) -> str:
         evidence_score = packet.evidence_synthesis.score.value or 0.0
     else:
         # Calculate basic score from evidence lines
-        if packet.hasEvidenceLines:
+        if packet.has_evidence_lines:
             total = sum(
-                line.scoreOfEvidenceProvided or 1.0
-                for line in packet.hasEvidenceLines
-                if line.directionOfEvidenceProvided == "supports"
+                line.score_of_evidence_provided or 1.0
+                for line in packet.has_evidence_lines
+                if line.direction_of_evidence_provided == "supports"
             )
-            count = len(packet.hasEvidenceLines)
+            count = len(packet.has_evidence_lines)
             evidence_score = total / count if count else 0
 
     # Format evidence section
-    evidence_section = format_evidence_section(packet.hasEvidenceLines)
+    evidence_section = format_evidence_section(packet.has_evidence_lines)
 
     return SYNTHESIS_PROMPT_TEMPLATE.format(
-        subject_label=packet.statement.subjectLabel or "Unknown",
+        subject_label=packet.statement.subject_label or "Unknown",
         subject_id=packet.statement.subject or "",
         predicate=predicate,
         object_value=packet.statement.object or "",

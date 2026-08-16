@@ -707,9 +707,9 @@ def enrich(
                 skipped_score += 1
             continue
 
-        original_line_count = len(packet.hasEvidenceLines) if packet.hasEvidenceLines else 0
+        original_line_count = len(packet.has_evidence_lines) if packet.has_evidence_lines else 0
         enriched_packet = enricher.enrich(packet)
-        new_line_count = len(enriched_packet.hasEvidenceLines) if enriched_packet.hasEvidenceLines else 0
+        new_line_count = len(enriched_packet.has_evidence_lines) if enriched_packet.has_evidence_lines else 0
         papers_added = new_line_count - original_line_count
 
         if papers_added > 0:
@@ -1047,19 +1047,19 @@ def show(
         typer.echo(f"Status: {status_val}")
         typer.echo("")
         typer.echo("Statement:")
-        typer.echo(f"  Subject: {packet.statement.subject} ({packet.statement.subjectLabel or 'N/A'})")
+        typer.echo(f"  Subject: {packet.statement.subject} ({packet.statement.subject_label or 'N/A'})")
         pred = packet.statement.predicate.label if packet.statement.predicate else "N/A"
         typer.echo(f"  Predicate: {pred}")
         typer.echo(f"  Object: {packet.statement.object}")
         typer.echo("")
-        typer.echo(f"Evidence Lines: {len(packet.hasEvidenceLines or [])}")
-        for i, line in enumerate(packet.hasEvidenceLines or []):
-            direction = line.directionOfEvidenceProvided or "N/A"
-            strength = line.strengthOfEvidenceProvided or "N/A"
-            score = line.scoreOfEvidenceProvided
+        typer.echo(f"Evidence Lines: {len(packet.has_evidence_lines or [])}")
+        for i, line in enumerate(packet.has_evidence_lines or []):
+            direction = line.direction_of_evidence_provided or "N/A"
+            strength = line.strength_of_evidence_provided or "N/A"
+            score = line.score_of_evidence_provided
             score_str = f"{score:.2f}" if score else "N/A"
             typer.echo(f"  [{i+1}] {direction} ({strength}, score={score_str})")
-            for item in line.hasEvidenceItems or []:
+            for item in line.has_evidence_items or []:
                 item_type = item.type or "Unknown"
                 desc = getattr(item, "description", "") or ""
                 typer.echo(f"      - {item_type}: {desc[:50]}")
@@ -1559,12 +1559,12 @@ def jsonl_get(
         typer.echo(f"Status: {status_val}")
         typer.echo("")
         typer.echo("Statement:")
-        typer.echo(f"  Subject: {packet.statement.subject} ({packet.statement.subjectLabel or 'N/A'})")
+        typer.echo(f"  Subject: {packet.statement.subject} ({packet.statement.subject_label or 'N/A'})")
         pred = packet.statement.predicate.label if packet.statement.predicate else "N/A"
         typer.echo(f"  Predicate: {pred}")
         typer.echo(f"  Object: {packet.statement.object}")
         typer.echo("")
-        typer.echo(f"Evidence Lines: {len(packet.hasEvidenceLines or [])}")
+        typer.echo(f"Evidence Lines: {len(packet.has_evidence_lines or [])}")
 
 
 @app.command(name="jsonl-rebuild-index")
@@ -1693,10 +1693,10 @@ def jsonl_browse(
         if source:
             # Check if source is in any evidence line
             source_found = False
-            for line in packet.hasEvidenceLines or []:
-                for item in line.hasEvidenceItems or []:
-                    if hasattr(item, "sourceId") and item.sourceId:
-                        if source.lower() in item.sourceId.lower():
+            for line in packet.has_evidence_lines or []:
+                for item in line.has_evidence_items or []:
+                    if hasattr(item, "source_id") and item.source_id:
+                        if source.lower() in item.source_id.lower():
                             source_found = True
                             break
                 if source_found:
@@ -1729,20 +1729,20 @@ def jsonl_browse(
 
         # Get sources
         sources = set()
-        for line in packet.hasEvidenceLines or []:
-            for item in line.hasEvidenceItems or []:
-                if hasattr(item, "sourceId") and item.sourceId:
-                    sources.add(item.sourceId)
+        for line in packet.has_evidence_lines or []:
+            for item in line.has_evidence_items or []:
+                if hasattr(item, "source_id") and item.source_id:
+                    sources.add(item.source_id)
 
         results.append({
             "id": packet.id,
             "subject": packet.statement.subject or "",
-            "subject_label": packet.statement.subjectLabel or "",
+            "subject_label": packet.statement.subject_label or "",
             "predicate": pred,
             "object": packet.statement.object or "",
             "score": score,
             "sources": ",".join(sorted(sources)),
-            "evidence_count": len(packet.hasEvidenceLines or []),
+            "evidence_count": len(packet.has_evidence_lines or []),
         })
         count += 1
 
@@ -1878,10 +1878,10 @@ def jsonl_load(
                 pred = packet.statement.predicate.label or packet.statement.predicate.code or "unknown"
             predicates[pred] = predicates.get(pred, 0) + 1
 
-            for ev_line in packet.hasEvidenceLines or []:
-                for item in ev_line.hasEvidenceItems or []:
-                    if hasattr(item, "sourceId") and item.sourceId:
-                        sources[item.sourceId] = sources.get(item.sourceId, 0) + 1
+            for ev_line in packet.has_evidence_lines or []:
+                for item in ev_line.has_evidence_items or []:
+                    if hasattr(item, "source_id") and item.source_id:
+                        sources[item.source_id] = sources.get(item.source_id, 0) + 1
 
             if packet.evidence_synthesis and packet.evidence_synthesis.score:
                 if packet.evidence_synthesis.score.value is not None:
@@ -1914,7 +1914,7 @@ def jsonl_load(
             score_str = f"{score:.2f}" if score is not None else "N/A"
             obj = packet.statement.object or ""
             obj_short = (obj[:27] + "...") if len(obj) > 30 else obj
-            ev_count = len(packet.hasEvidenceLines or [])
+            ev_count = len(packet.has_evidence_lines or [])
             typer.echo(f"{packet.id:<20} {packet.statement.subject or '':<15} {score_str:>6} {ev_count:>8} {obj_short:<30}")
 
         if len(packets) > 50:

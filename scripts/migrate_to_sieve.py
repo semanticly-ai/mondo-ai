@@ -87,12 +87,12 @@ def migrate_evidence_item(evidence: dict, counter: int) -> dict:
         return {
             "id": evidence.get("id", f"ev_{counter}"),
             "type": "ConcordanceItem",
-            "evidenceItemType": "ConcordanceItem",
-            "sourceName": evidence.get("source_resource_name"),
-            "sourceId": evidence.get("source_resource"),
-            "sourceSubject": evidence.get("source_entity_id"),
-            "sourceSubjectLabel": evidence.get("source_entity_label"),
-            "mappingJustification": evidence.get("mapping_predicate"),
+            "evidence_item_type": "ConcordanceItem",
+            "source_name": evidence.get("source_resource_name"),
+            "source_id": evidence.get("source_resource"),
+            "source_subject": evidence.get("source_entity_id"),
+            "source_subject_label": evidence.get("source_entity_label"),
+            "mapping_justification": evidence.get("mapping_predicate"),
             "description": evidence.get("description"),
         }
     elif ev_type == "LITERATURE":
@@ -102,7 +102,7 @@ def migrate_evidence_item(evidence: dict, counter: int) -> dict:
             "title": evidence.get("publication_title"),
             "pmid": evidence.get("publication_id", "").replace("PMID:", "") if evidence.get("publication_id") else None,
             "quote": evidence.get("quoted_text"),
-            "quoteLocation": evidence.get("quote_location"),
+            "quote_location": evidence.get("quote_location"),
             "description": evidence.get("description"),
         }
     elif ev_type == "COMPUTATIONAL":
@@ -130,10 +130,10 @@ def migrate_evidence_to_line(evidence: dict, counter: int) -> dict:
     return {
         "id": f"el_{counter:04d}",
         "type": "SieveEvidenceLine",
-        "hasEvidenceItems": [evidence_item],
-        "directionOfEvidenceProvided": direction,
-        "strengthOfEvidenceProvided": reliability_to_strength(strength),
-        "scoreOfEvidenceProvided": strength,
+        "has_evidence_items": [evidence_item],
+        "direction_of_evidence_provided": direction,
+        "strength_of_evidence_provided": reliability_to_strength(strength),
+        "score_of_evidence_provided": strength,
     }
 
 
@@ -149,11 +149,11 @@ def migrate_statement(statement: dict) -> dict:
         "id": statement.get("statement_id", "stmt_unknown"),
         "type": "SieveStatement",
         "subject": statement.get("subject_mondo_id"),
-        "subjectLabel": subject_label,
+        "subject_label": subject_label,
         "predicate": predicate_coding,
         "object": object_value,
-        "objectLabel": object_value,
-        "statementText": f"{subject_label or statement.get('subject_mondo_id')} has {predicate_coding['label']} '{object_value}'",
+        "object_label": object_value,
+        "statement_text": f"{subject_label or statement.get('subject_mondo_id')} has {predicate_coding['label']} '{object_value}'",
     }
 
 
@@ -221,7 +221,7 @@ def migrate_packet(packet: dict) -> dict:
         "id": packet.get("id"),
         "statement": statement,
         "status": status,
-        "hasEvidenceLines": evidence_lines if evidence_lines else None,
+        "has_evidence_lines": evidence_lines if evidence_lines else None,
         "evidence_synthesis": synthesis,
         "created": str(date.today()),
     }
@@ -244,7 +244,7 @@ def migrate_file(input_path: Path, output_path: Path) -> bool:
             return False
 
         # Check if already in SIEVE format
-        if "hasEvidenceLines" in data:
+        if "has_evidence_lines" in data:
             print(f"  Already in SIEVE format: {input_path}")
             return True
 

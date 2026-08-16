@@ -152,7 +152,7 @@ class SynthesisAgent:
                 name=self.model,
                 description=f"AI synthesis agent ({self.provider})",
             ),
-            date=date.today(),
+            date=date.today().isoformat(),
             used=[f"prompt_version:{self.prompt_version}"],
         )
 

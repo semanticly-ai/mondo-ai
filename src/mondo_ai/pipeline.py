@@ -229,11 +229,11 @@ class PipelineRunner:
                     id=stmt_id,
                     type="SieveStatement",
                     subject=mondo_id,
-                    subjectLabel=mondo_label,
+                    subject_label=mondo_label,
                     predicate=predicate_to_coding(predicate),
                     object=syn.value,
-                    objectLabel=syn.value,
-                    statementText=f"{mondo_label or mondo_id} has exact synonym '{syn.value}'",
+                    object_label=syn.value,
+                    statement_text=f"{mondo_label or mondo_id} has exact synonym '{syn.value}'",
                 )
 
                 # Get reliability for this source
@@ -243,12 +243,12 @@ class PipelineRunner:
                 concordance_item = ConcordanceItem(
                     id=_generate_evidence_item_id(evidence_counter, source_id),
                     type="ConcordanceItem",
-                    evidenceItemType=EvidenceItemType.ConcordanceItem,
-                    sourceName=source_name,
-                    sourceId=source_id,
-                    sourceSubject=entity.id,
-                    sourceSubjectLabel=entity.label,
-                    mappingJustification="skos:exactMatch",
+                    evidence_item_type=EvidenceItemType.ConcordanceItem,
+                    source_name=source_name,
+                    source_id=source_id,
+                    source_subject=entity.id,
+                    source_subject_label=entity.label,
+                    mapping_justification="skos:exactMatch",
                     description=f"Synonym from {source_name}: '{syn.value}'",
                 )
                 evidence_counter += 1
@@ -257,10 +257,10 @@ class PipelineRunner:
                 evidence_line = SieveEvidenceLine(
                     id=_generate_evidence_line_id(packet_counter, source_id),
                     type="SieveEvidenceLine",
-                    hasEvidenceItems=[concordance_item],
-                    directionOfEvidenceProvided=EvidenceDirection.supports.value,
-                    strengthOfEvidenceProvided=_reliability_to_strength(reliability),
-                    scoreOfEvidenceProvided=reliability,
+                    has_evidence_items=[concordance_item],
+                    direction_of_evidence_provided=EvidenceDirection.supports.value,
+                    strength_of_evidence_provided=_reliability_to_strength(reliability),
+                    score_of_evidence_provided=reliability,
                 )
 
                 # Create packet
@@ -268,7 +268,7 @@ class PipelineRunner:
                     id=_generate_packet_id(packet_counter),
                     statement=statement,
                     status=CurationStatus.UNREVIEWED,
-                    hasEvidenceLines=[evidence_line],
+                    has_evidence_lines=[evidence_line],
                     created=date.today(),
                 )
                 packet_counter += 1
@@ -336,11 +336,11 @@ class PipelineRunner:
                     id=stmt_id,
                     type="SieveStatement",
                     subject=mondo_child,
-                    subjectLabel=mondo_child_label,
+                    subject_label=mondo_child_label,
                     predicate=predicate_to_coding(StatementPredicate.PARENT),
                     object=mondo_parent,
-                    objectLabel=mondo_parent_label or mondo_parent,
-                    statementText=f"{mondo_child_label or mondo_child} is a subclass of {mondo_parent_label or mondo_parent}",
+                    object_label=mondo_parent_label or mondo_parent,
+                    statement_text=f"{mondo_child_label or mondo_child} is a subclass of {mondo_parent_label or mondo_parent}",
                 )
 
                 # Get reliability for this source
@@ -350,12 +350,12 @@ class PipelineRunner:
                 concordance_item = ConcordanceItem(
                     id=_generate_evidence_item_id(evidence_counter, source_id),
                     type="ConcordanceItem",
-                    evidenceItemType=EvidenceItemType.ConcordanceItem,
-                    sourceName=source_name,
-                    sourceId=source_id,
-                    sourceSubject=entity.id,
-                    sourceSubjectLabel=entity.label,
-                    mappingJustification="skos:exactMatch",
+                    evidence_item_type=EvidenceItemType.ConcordanceItem,
+                    source_name=source_name,
+                    source_id=source_id,
+                    source_subject=entity.id,
+                    source_subject_label=entity.label,
+                    mapping_justification="skos:exactMatch",
                     description=f"SubClassOf from {source_name}: {entity.label} -> {labels.get(parent_id, parent_id)}",
                 )
                 evidence_counter += 1
@@ -364,10 +364,10 @@ class PipelineRunner:
                 evidence_line = SieveEvidenceLine(
                     id=_generate_evidence_line_id(packet_counter, source_id),
                     type="SieveEvidenceLine",
-                    hasEvidenceItems=[concordance_item],
-                    directionOfEvidenceProvided=EvidenceDirection.supports.value,
-                    strengthOfEvidenceProvided=_reliability_to_strength(reliability),
-                    scoreOfEvidenceProvided=reliability,
+                    has_evidence_items=[concordance_item],
+                    direction_of_evidence_provided=EvidenceDirection.supports.value,
+                    strength_of_evidence_provided=_reliability_to_strength(reliability),
+                    score_of_evidence_provided=reliability,
                 )
 
                 # Create packet
@@ -375,7 +375,7 @@ class PipelineRunner:
                     id=_generate_packet_id(packet_counter),
                     statement=statement,
                     status=CurationStatus.UNREVIEWED,
-                    hasEvidenceLines=[evidence_line],
+                    has_evidence_lines=[evidence_line],
                     created=date.today(),
                 )
                 packet_counter += 1
@@ -473,9 +473,9 @@ def export_packets_summary(packets: list[EvidencePacket], output_path: str | Pat
             "score": round(score, 3) if score else None,
             "predicate": pred_str,
             "mondo_id": packet.statement.subject,
-            "mondo_label": packet.statement.subjectLabel,
+            "mondo_label": packet.statement.subject_label,
             "object": packet.statement.object,
-            "evidence_line_count": len(packet.hasEvidenceLines) if packet.hasEvidenceLines else 0,
+            "evidence_line_count": len(packet.has_evidence_lines) if packet.has_evidence_lines else 0,
         }
         summary["packets"].append(packet_summary)
 

@@ -48,17 +48,17 @@ def has_literature_evidence(packet: EvidencePacket) -> bool:
         >>> has_literature_evidence(packet)  # doctest: +SKIP
         False
     """
-    if not packet.hasEvidenceLines:
+    if not packet.has_evidence_lines:
         return False
 
-    for line in packet.hasEvidenceLines:
-        if not line.hasEvidenceItems:
+    for line in packet.has_evidence_lines:
+        if not line.has_evidence_items:
             continue
-        for item in line.hasEvidenceItems:
-            # Check by type string (SieveDocument) or evidenceItemType enum (Document)
+        for item in line.has_evidence_items:
+            # Check by type string (SieveDocument) or evidence_item_type enum (Document)
             if getattr(item, "type", None) == "SieveDocument":
                 return True
-            if getattr(item, "evidenceItemType", None) == EvidenceItemType.Document:
+            if getattr(item, "evidence_item_type", None) == EvidenceItemType.Document:
                 return True
     return False
 
@@ -114,7 +114,7 @@ class PacketEnricher:
             title=paper.title,
             pmid=paper.pmid,
             quote=quote,
-            quoteLocation="Abstract" if quote else None,
+            quote_location="Abstract" if quote else None,
             urls=urls if urls else None,
             description=f"Literature from {paper.journal or 'PubMed'}: {paper.title[:100]}",
         )
@@ -122,10 +122,10 @@ class PacketEnricher:
         return SieveEvidenceLine(
             id=_generate_evidence_line_id(),
             type="SieveEvidenceLine",
-            hasEvidenceItems=[doc],
-            directionOfEvidenceProvided=EvidenceDirection.supports.value,
-            strengthOfEvidenceProvided=EvidenceStrength.moderate.value,
-            scoreOfEvidenceProvided=0.5,  # Moderate default score for literature
+            has_evidence_items=[doc],
+            direction_of_evidence_provided=EvidenceDirection.supports.value,
+            strength_of_evidence_provided=EvidenceStrength.moderate.value,
+            score_of_evidence_provided=0.5,  # Moderate default score for literature
         )
 
     def _get_current_score(self, packet: EvidencePacket) -> float:
@@ -140,12 +140,12 @@ class PacketEnricher:
         if packet.evidence_synthesis and packet.evidence_synthesis.score:
             return packet.evidence_synthesis.score.value or 0
         # Calculate from evidence lines if no synthesis
-        if not packet.hasEvidenceLines:
+        if not packet.has_evidence_lines:
             return 0
         total_score = sum(
-            line.scoreOfEvidenceProvided or 0 for line in packet.hasEvidenceLines
+            line.score_of_evidence_provided or 0 for line in packet.has_evidence_lines
         )
-        return total_score / len(packet.hasEvidenceLines) if packet.hasEvidenceLines else 0
+        return total_score / len(packet.has_evidence_lines) if packet.has_evidence_lines else 0
 
     def should_enrich(self, packet: EvidencePacket) -> bool:
         """Check if a packet should be enriched.
@@ -184,7 +184,7 @@ class PacketEnricher:
             return packet
 
         # Build search query from the statement
-        disease_label = packet.statement.subjectLabel or ""
+        disease_label = packet.statement.subject_label or ""
         object_value = packet.statement.object or ""
 
         # For synonyms, search for both the disease and the synonym
@@ -196,9 +196,9 @@ class PacketEnricher:
         # Convert to evidence lines and add to packet
         for paper in papers:
             evidence_line = self._paper_to_evidence_line(paper)
-            if packet.hasEvidenceLines is None:
-                packet.hasEvidenceLines = []
-            packet.hasEvidenceLines.append(evidence_line)
+            if packet.has_evidence_lines is None:
+                packet.has_evidence_lines = []
+            packet.has_evidence_lines.append(evidence_line)
 
         packet.updated = date.today()
         return packet

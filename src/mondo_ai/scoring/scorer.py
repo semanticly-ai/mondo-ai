@@ -70,36 +70,36 @@ class Scorer:
             >>> item = ConcordanceItem(
             ...     id="ev1",
             ...     type="ConcordanceItem",
-            ...     sourceName="test",
+            ...     source_name="test",
             ... )
             >>> line = SieveEvidenceLine(
             ...     id="el1",
             ...     type="SieveEvidenceLine",
-            ...     hasEvidenceItems=[item],
-            ...     directionOfEvidenceProvided="supports",
-            ...     scoreOfEvidenceProvided=0.9,
+            ...     has_evidence_items=[item],
+            ...     direction_of_evidence_provided="supports",
+            ...     score_of_evidence_provided=0.9,
             ... )
             >>> packet = EvidencePacket(
             ...     id="pkt1",
             ...     statement=stmt,
-            ...     hasEvidenceLines=[line]
+            ...     has_evidence_lines=[line]
             ... )
             >>> scorer = Scorer()
             >>> score = scorer.calculate_ner(packet)
             >>> score == 1.0
             True
         """
-        if not packet.hasEvidenceLines:
+        if not packet.has_evidence_lines:
             return 0.0
 
         s_plus = 0.0  # Supporting
         s_minus = 0.0  # Disputing
         s_uncertain = 0.0  # Neutral
 
-        for line in packet.hasEvidenceLines:
+        for line in packet.has_evidence_lines:
             # Get the score for this evidence line
-            score = line.scoreOfEvidenceProvided or 1.0
-            direction = line.directionOfEvidenceProvided or "neutral"
+            score = line.score_of_evidence_provided or 1.0
+            direction = line.direction_of_evidence_provided or "neutral"
 
             if direction == EvidenceDirection.supports.value or direction == "supports":
                 s_plus += score

@@ -112,20 +112,20 @@ class PacketIndex:
         # Count evidence lines and extract source IDs
         evidence_count = 0
         source_ids = set()
-        if packet.hasEvidenceLines:
-            evidence_count = len(packet.hasEvidenceLines)
-            for line in packet.hasEvidenceLines:
-                if line.hasEvidenceItems:
-                    for item in line.hasEvidenceItems:
-                        # Try to get sourceId from ConcordanceItem
-                        if hasattr(item, "sourceId") and item.sourceId:
-                            source_ids.add(item.sourceId)
+        if packet.has_evidence_lines:
+            evidence_count = len(packet.has_evidence_lines)
+            for line in packet.has_evidence_lines:
+                if line.has_evidence_items:
+                    for item in line.has_evidence_items:
+                        # Try to get source_id from ConcordanceItem
+                        if hasattr(item, "source_id") and item.source_id:
+                            source_ids.add(item.source_id)
 
         return {
             "packet_id": packet.id,
             "file_path": str(file_path),
             "subject_id": packet.statement.subject or "",
-            "subject_label": packet.statement.subjectLabel,
+            "subject_label": packet.statement.subject_label,
             "predicate": predicate,
             "object_value": packet.statement.object or "",
             "status": packet.status.value if hasattr(packet.status, "value") else (packet.status or "UNREVIEWED"),

@@ -129,10 +129,10 @@ def create_consortium_evidence_line(
     contribution = AgentContribution(
         id=f"ev_consortium_{hash(entity_id) % 100000:05d}",
         type="AgentContribution",
-        evidenceItemType=EvidenceItemType.AgentContribution,
+        evidence_item_type=EvidenceItemType.AgentContribution,
         contributor=MONDO_CONSORTIUM,
-        trustLevel=TrustLevel.authority,
-        contributionType=ContributionType.decision,
+        trust_level=TrustLevel.authority,
+        contribution_type=ContributionType.decision,
         content="Term included in Mondo Disease Ontology",
         reference=version,
         description=f"Organizational decision: {entity_id} included in Mondo",
@@ -141,10 +141,10 @@ def create_consortium_evidence_line(
     return SieveEvidenceLine(
         id=f"el_consortium_{hash(entity_id) % 100000:05d}",
         type="SieveEvidenceLine",
-        hasEvidenceItems=[contribution],
-        directionOfEvidenceProvided=EvidenceDirection.supports.value,
-        strengthOfEvidenceProvided=EvidenceStrength.moderate.value,
-        scoreOfEvidenceProvided=0.6,
+        has_evidence_items=[contribution],
+        direction_of_evidence_provided=EvidenceDirection.supports.value,
+        strength_of_evidence_provided=EvidenceStrength.moderate.value,
+        score_of_evidence_provided=0.6,
     )
 
 
@@ -167,14 +167,14 @@ def create_expert_evidence_line(
     contribution = AgentContribution(
         id=f"ev_expert_{hash(orcid + entity_id) % 100000:05d}",
         type="AgentContribution",
-        evidenceItemType=EvidenceItemType.AgentContribution,
+        evidence_item_type=EvidenceItemType.AgentContribution,
         contributor=Agent(
             id=orcid_curie,
             type="Agent",
             subtype="person",
         ),
-        trustLevel=TrustLevel.curator,
-        contributionType=ContributionType.decision,
+        trust_level=TrustLevel.curator,
+        contribution_type=ContributionType.decision,
         content=f"Expert curator determination for {annotation_type}",
         description=f"Curator {orcid_curie} approved this {annotation_type}",
     )
@@ -182,10 +182,10 @@ def create_expert_evidence_line(
     return SieveEvidenceLine(
         id=f"el_expert_{hash(orcid + entity_id) % 100000:05d}",
         type="SieveEvidenceLine",
-        hasEvidenceItems=[contribution],
-        directionOfEvidenceProvided=EvidenceDirection.supports.value,
-        strengthOfEvidenceProvided=EvidenceStrength.strong.value,
-        scoreOfEvidenceProvided=0.8,
+        has_evidence_items=[contribution],
+        direction_of_evidence_provided=EvidenceDirection.supports.value,
+        strength_of_evidence_provided=EvidenceStrength.strong.value,
+        score_of_evidence_provided=0.8,
     )
 
 
@@ -221,10 +221,10 @@ def create_candidate_literature_evidence_line(
     return SieveEvidenceLine(
         id=f"el_lit_{pmid}_{hash(entity_id) % 100000:05d}",
         type="SieveEvidenceLine",
-        hasEvidenceItems=[document],
-        directionOfEvidenceProvided=EvidenceDirection.supports.value,
-        strengthOfEvidenceProvided=EvidenceStrength.weak.value,
-        scoreOfEvidenceProvided=0.4,
+        has_evidence_items=[document],
+        direction_of_evidence_provided=EvidenceDirection.supports.value,
+        strength_of_evidence_provided=EvidenceStrength.weak.value,
+        score_of_evidence_provided=0.4,
     )
 
 
