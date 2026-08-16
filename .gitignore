@@ -145,3 +145,4 @@ dmypy.json
 # Generated SQLite packet index
 *.db
 packet_index.db
+/issues
