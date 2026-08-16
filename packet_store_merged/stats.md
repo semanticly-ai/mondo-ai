@@ -1,65 +1,68 @@
 # Evidence Packet Statistics
 
-*Generated: 2026-03-21 19:03:31*
+*Generated: 2026-08-16 23:15:23*
 
 ## Summary
 
 | Metric | Count |
 |--------|------:|
-| Total packets | 72,048 |
-| Total evidence lines | 77,679 |
-| Total evidence items | 77,679 |
-| Unique Mondo subjects | 19,137 |
+| Total packets | 6,495 |
+| Total evidence lines | 6,503 |
+| Total evidence items | 6,503 |
+| Unique Mondo subjects | 2,975 |
 
 ## By Statement Predicate
 
 | Predicate | Count | % |
 |--------|------:|---:|
-| exact synonym | 55,523 | 77.1% |
-| subclass of | 16,525 | 22.9% |
+| exact synonym | 6,367 | 98.0% |
+| related synonym | 124 | 1.9% |
+| narrow synonym | 3 | 0.0% |
+| broad synonym | 1 | 0.0% |
 
 ## By Source
 
 | Source | Count | % |
 |--------|------:|---:|
-| doid | 35,296 | 45.4% |
-| omim | 28,645 | 36.9% |
-| ordo | 13,738 | 17.7% |
+| doid | 2,615 | 40.2% |
+| ordo | 2,050 | 31.5% |
+| omim | 1,838 | 28.3% |
 
 ## By Curation Status
 
 | Status | Count | % |
 |--------|------:|---:|
-| UNREVIEWED | 72,048 | 100.0% |
+| UNREVIEWED | 6,495 | 100.0% |
 
 ## By Evidence Direction
 
 | Direction | Count | % |
 |--------|------:|---:|
-| supports | 77,679 | 100.0% |
+| supports | 6,503 | 100.0% |
 
 ## By Evidence Strength
 
 | Strength | Count | % |
 |--------|------:|---:|
-| strong | 77,679 | 100.0% |
+| strong | 6,375 | 98.0% |
+| moderate | 128 | 2.0% |
 
 ## By Evidence Item Type
 
 | Type | Count | % |
 |--------|------:|---:|
-| ConcordanceItem | 77,679 | 100.0% |
+| ConcordanceItem | 6,503 | 100.0% |
 
 ## Score Distribution
 
 | Bucket | Count | % |
 |--------|------:|---:|
-| high (>= 0.8) | 77,679 | 100.0% |
+| high (>= 0.8) | 6,375 | 98.0% |
+| medium (0.5 - 0.8) | 128 | 2.0% |
 
 ## Evidence Lines per Packet
 
 | Evidence Lines | Count | % |
 |--------|------:|---:|
-| 1 | 66,865 | 92.8% |
-| 2 | 4,735 | 6.6% |
-| 3 | 448 | 0.6% |
+| 1 | 6,487 | 99.9% |
+| 2 | 8 | 0.1% |

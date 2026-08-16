@@ -3,21 +3,13 @@
   "files": [
     {
       "filename": "packets_000.jsonl",
-      "status": "sealed",
-      "size_bytes": 52429390,
-      "packet_count": 41256,
-      "created": "2026-03-18T11:41:54.486640",
-      "sealed_at": "2026-03-18T12:14:54.510561"
-    },
-    {
-      "filename": "packets_001.jsonl",
       "status": "open",
-      "size_bytes": 36639510,
-      "packet_count": 30792,
-      "created": "2026-03-18T12:14:54.510976",
+      "size_bytes": 7162565,
+      "packet_count": 6495,
+      "created": "2026-08-16T23:14:25.768065",
       "sealed_at": null
     }
   ],
-  "total_packets": 72048,
-  "total_size_bytes": 89068900
+  "total_packets": 6495,
+  "total_size_bytes": 7162565
 }
