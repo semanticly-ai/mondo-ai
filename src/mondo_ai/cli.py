@@ -520,6 +520,36 @@ def build_packets_multi(
     typer.echo(f"  Store size: {stats['total_size_mb']:.2f} MB")
 
 
+@app.command(name="export-web-data")
+def export_web_data_cmd(
+    store: Annotated[
+        Path,
+        typer.Option("--store", help="Packet store directory to export"),
+    ] = Path("packet_store_merged"),
+    output: Annotated[
+        Path,
+        typer.Option("--output", "-o", help="Output JSON path for the docs browser"),
+    ] = Path("docs/evidence/data.json"),
+) -> None:
+    """Export the packet store to JSON for the static docs Evidence Browser.
+
+    The mkdocs "Evidence Browser" page loads this file client-side, so the
+    browser deploys as static files on GitHub Pages. Run before `mkdocs build`.
+
+    Examples:
+
+        mondo-ai export-web-data
+        mondo-ai export-web-data --store packet_store_merged -o docs/evidence/data.json
+    """
+    from mondo_ai.web.static_export import export_web_data
+
+    if not store.exists():
+        typer.echo(f"Error: packet store not found: {store}", err=True)
+        raise typer.Exit(1)
+    n = export_web_data(store, output)
+    typer.echo(f"Exported {n} packets to {output}")
+
+
 @app.command()
 def score(
     path: Annotated[
