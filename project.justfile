@@ -279,6 +279,16 @@ migrate-packets:
 
 # ============== Web Application recipes ==============
 
+# Generate the static evidence-browser data for the docs site
+[group('web')]
+gen-web-data:
+    uv run mondo-ai export-web-data
+
+# Serve the docs site (with a freshly generated evidence browser) locally
+[group('web')]
+serve-docs: gen-web-data
+    uv run mkdocs serve
+
 # Serve the web application (development)
 [group('web')]
 serve-web:

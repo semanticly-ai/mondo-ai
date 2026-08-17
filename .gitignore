@@ -146,3 +146,6 @@ dmypy.json
 *.db
 packet_index.db
 /issues
+
+# Generated static evidence-browser data (regenerated on each docs build)
+docs/evidence/data.json

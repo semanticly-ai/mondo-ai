@@ -2,11 +2,30 @@
 site_name: "mondo-ai"
 theme:
   name: material
-  # palette:
-  #  scheme: slate
-  #  primary: cyan
   features:
     - content.tabs.link
+    - content.code.copy
+    - navigation.instant
+    - navigation.top
+    - navigation.tracking
+    - search.suggest
+    - search.highlight
+    - toc.follow
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: teal
+      accent: teal
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: teal
+      accent: teal
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
 
 # for adding extra css/js see https://www.mkdocs.org/user-guide/customizing-your-theme/
 
@@ -23,6 +42,7 @@ plugins:
 nav:
   - Home: index.md
   - Pipeline Guide: pipeline.md
+  - Evidence Browser: evidence/index.md
   
 exclude_docs: |
   /templates-linkml/
