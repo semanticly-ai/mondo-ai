@@ -386,6 +386,8 @@ class AnthropicCompleter:
     model: str = DEFAULT_MODEL
     max_tokens: int = 16000
     effort: str = "high"
+    #: The structured-output schema; review mode passes its own.
+    output_format: Any = None
     usage: dict[str, int] = field(
         default_factory=lambda: {
             "input_tokens": 0, "output_tokens": 0,
@@ -415,7 +417,7 @@ class AnthropicCompleter:
             model=self.model,
             max_tokens=self.max_tokens,
             system=[{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}],
-            output_format=BatchVerdict,
+            output_format=self.output_format or BatchVerdict,
             output_config={"effort": self.effort},
             messages=[{"role": "user", "content": user}],
         )

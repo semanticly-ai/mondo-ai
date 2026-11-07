@@ -802,48 +802,79 @@ def attach_to_records(
         verdict = run.verdicts.get(key)
         if verdict is None:
             continue
-        prior_row = priors.get(key)
-        asserted = PREDICATE_RELATION.get(final.predicate)
-        # The prior reported is the one for the relation the pipeline asserted, not the one
-        # Boomer chose: the column's job is to show what conditioning did to our own claim.
-        prior = (
-            prior_row[RELATIONS.index(asserted)]
-            if prior_row is not None and asserted in RELATIONS
-            else verdict.prior
-        )
-        marginal = posteriors.get(key, {})
-        scored = (coverage or {}).get(key, 1.0 if marginal else 0.0)
-        if scored < min_coverage:
-            marginal = {}
-        posterior = marginal.get(asserted) if asserted else None
-
-        # A mapping Boomer placed in its singleton group interacts with nothing, so no
-        # consistent assignment of anything else can change it and its posterior *is* its
-        # prior. Saying so is the definition, not a stand-in for a computation that did not
-        # run — and leaving 92% of the column empty would make it look broken instead of
-        # making the unconstrained majority visible.
-        unconstrained = verdict.clique_size <= 1 and verdict.method == "singletons"
-        if posterior is None and unconstrained and asserted:
-            posterior = prior
-            scored = 1.0
-        record.boomer = {
-            "prior": round(prior, 6),
-            "posterior": round(posterior, 6) if posterior is not None else None,
-            "relation": verdict.relation,
-            "predicate": verdict.predicate,
-            "agrees_with_pipeline": verdict.predicate == final.predicate,
-            "overruled": verdict.overruled,
-            "clique_id": verdict.clique_id,
-            "clique_size": verdict.clique_size,
-            "clique_probability": round(verdict.clique_probability, 6),
-            "clique_confidence": round(verdict.clique_confidence, 6),
-            "method": verdict.method,
-            "marginal": {k: round(v, 6) for k, v in sorted(marginal.items())} or None,
-            "posterior_coverage": round(scored, 6),
-            "constrained": not unconstrained,
-        }
+        record.boomer = verdict_cells(
+            verdict, final.predicate, priors.get(key), posteriors.get(key, {}),
+            (coverage or {}).get(key), min_coverage=min_coverage)
         annotated += 1
     return annotated
+
+
+def verdict_cells(
+    verdict: BoomerVerdict,
+    asserted_predicate: str,
+    prior_row: tuple[float, ...] | None,
+    marginal: dict[str, float],
+    coverage: float | None,
+    *,
+    min_coverage: float = MIN_POSTERIOR_COVERAGE,
+) -> dict:
+    """Summarise what Boomer concluded about one asserted mapping.
+
+    Shared by the alignment run and review mode, so the two can never disagree on what
+    ``boomer_prior`` and ``boomer_posterior`` mean.
+
+    Args:
+        verdict: Boomer's verdict for the mapping.
+        asserted_predicate: The SSSOM predicate the mapping asserts.
+        prior_row: The ptable row that went in, if known.
+        marginal: Relation -> max-marginal, empty when the marginal pass did not reach it.
+        coverage: Share of the prior mass the marginal pass scored; None when unknown.
+
+    Example:
+        >>> v = BoomerVerdict("M:1", "I:1", "equivalent", 0.9, clique_size=1,
+        ...                   method="singletons")
+        >>> c = verdict_cells(v, "skos:exactMatch", (0.0333, 0.0333, 0.9, 0.0334), {}, None)
+        >>> c["prior"], c["posterior"], c["constrained"]
+        (0.9, 0.9, False)
+    """
+    asserted = PREDICATE_RELATION.get(asserted_predicate)
+    # The prior reported is the one for the relation the pipeline asserted, not the one
+    # Boomer chose: the column's job is to show what conditioning did to our own claim.
+    prior = (
+        prior_row[RELATIONS.index(asserted)]
+        if prior_row is not None and asserted in RELATIONS
+        else verdict.prior
+    )
+    scored = coverage if coverage is not None else (1.0 if marginal else 0.0)
+    if scored < min_coverage:
+        marginal = {}
+    posterior = marginal.get(asserted) if asserted else None
+
+    # A mapping Boomer placed in its singleton group interacts with nothing, so no
+    # consistent assignment of anything else can change it and its posterior *is* its
+    # prior. Saying so is the definition, not a stand-in for a computation that did not
+    # run — and leaving 92% of the column empty would make it look broken instead of
+    # making the unconstrained majority visible.
+    unconstrained = verdict.clique_size <= 1 and verdict.method == "singletons"
+    if posterior is None and unconstrained and asserted:
+        posterior = prior
+        scored = 1.0
+    return {
+        "prior": round(prior, 6),
+        "posterior": round(posterior, 6) if posterior is not None else None,
+        "relation": verdict.relation,
+        "predicate": verdict.predicate,
+        "agrees_with_pipeline": verdict.predicate == asserted_predicate,
+        "overruled": verdict.overruled,
+        "clique_id": verdict.clique_id,
+        "clique_size": verdict.clique_size,
+        "clique_probability": round(verdict.clique_probability, 6),
+        "clique_confidence": round(verdict.clique_confidence, 6),
+        "method": verdict.method,
+        "marginal": {k: round(v, 6) for k, v in sorted(marginal.items())} or None,
+        "posterior_coverage": round(scored, 6),
+        "constrained": not unconstrained,
+    }
 
 
 #: Entities in a pinned variant get this suffix so variants cannot interact with each other
