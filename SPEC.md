@@ -5,6 +5,16 @@ SIEVE/SEPIO datamodel consolidation. This document mirrors what the code does
 today, not what it aspires to. Where a capability is partial or a gap exists, it
 is called out in [Known limitations](#known-limitations).
 
+## 0. Scope of this document
+
+This specifies the **evidence pipeline**. The repository also contains an independent
+**ontology alignment** subsystem (`src/mondo_ai/align/`, `just align-*`,
+`/align-ontologies`), specified separately in
+[`specs/2026-09-25-agentic-ontology-alignment-design.md`](specs/2026-09-25-agentic-ontology-alignment-design.md)
+and documented in [`docs/alignment.md`](docs/alignment.md). The two share the repository,
+the tooling and the `mondo-ai` CLI, and nothing else: alignment produces SSSOM mapping sets
+with curation-rule citations and a review-priority triage, not evidence packets.
+
 ## 1. Purpose
 
 mondo-ai is an evidence-driven pipeline for curating and QA-ing content in the

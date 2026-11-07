@@ -42,6 +42,9 @@ plugins:
 nav:
   - Home: index.md
   - Pipeline Guide: pipeline.md
+  - Ontology Alignment: alignment.md
+  - Mapping Review Guide: mapping-review-guide.md
+  - Curation Rules: maprule.md
   - Evidence Browser: evidence/index.md
   
 exclude_docs: |
