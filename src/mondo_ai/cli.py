@@ -2009,6 +2009,14 @@ def stats(
     typer.echo(f"  Unique Mondo subjects: {packet_stats.unique_subjects:,}")
 
 
+# The alignment pipeline is a sub-app rather than a flat set of commands: it has its own
+# config, its own stages and its own vocabulary, and flattening it would put twenty more
+# verbs into an already busy top level.
+from mondo_ai.align.cli import app as align_app  # noqa: E402
+
+app.add_typer(align_app)
+
+
 def main() -> None:
     """Main entry point for the CLI."""
     app()

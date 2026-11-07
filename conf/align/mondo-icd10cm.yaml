@@ -1,0 +1,119 @@
+# Mondo -> ICD-10-CM alignment.
+#
+# The reference run. ICD-10-CM comes from the mondo-ingest component rather than BioPortal
+# directly: the component is the normalised build Mondo itself ingests, it needs no API key,
+# and it is the full 97,903-code vocabulary rather than the truncated TTL that circulates.
+#
+# Refresh both sources with `just align-download`.
+
+run_id: mondo-icd10cm
+
+subject:
+  name: mondo
+  prefix: MONDO
+  format: obo
+  path: data/align/mondo.obo
+  url: http://purl.obolibrary.org/obo/mondo.obo
+
+object:
+  name: icd10cm
+  prefix: ICD10CM
+  format: owl
+  path: data/align/icd10cm.owl
+  url: http://purl.obolibrary.org/obo/mondo/sources/icd10cm.owl
+  iri_base: http://purl.bioontology.org/ontology/ICD10CM/
+
+# Declared once, at set level, because a mapping decision is only meaningful relative to the
+# use case it serves.
+use_case: >-
+  Knowledge-graph integration of disease concepts, and cohort identification from
+  administrative coding. An exact match must denote the same disease, because it will be used
+  to pull patient records. Broader and narrower relations are recorded with their true
+  predicate rather than promoted to exactMatch.
+
+# Conflations this run knowingly permits. Anything not listed here and encountered anyway is
+# escalated rather than silently crossed.
+#   CM-001 disease/disorder — technically distinct, conflated as acceptable
+#   CM-002 disease/phenotype where the distinction is genuinely murky (ICD-10-CM codes signs
+#          and symptoms; not conflating would lose a large number of real associations)
+#   CM-004 finding-vs-disorder
+conflations_permitted:
+  - CM-001
+  - CM-002
+  - CM-004
+#
+# Deliberately NOT permitted, and the run showed why each matters:
+#   CM-008 cross-species analog — Mondo carries explicitly veterinary terms
+#          ("polydactyly, domestic cat", "persistent right aortic arch, puma",
+#          "chronic active hepatitis, non-human animal"). ICD-10-CM is a human
+#          classification, so these must not map. The adjudicator cited CM-008 596 times
+#          on the first full run, almost all as rejections, which is the correct outcome
+#          for a cohort-identification use case.
+#   CM-005 etiological vs phenomenological divergence — 76 citations, each a real curation
+#          decision (Mondo individuating by cause where ICD codes by presentation).
+#          Escalated rather than permitted, because the right answer varies per pair.
+#   CM-003, CM-006, CM-007, CM-009 are rejection grounds in the registry, not permissions.
+
+candidates:
+  max_candidates: 10
+  # Laterality subcodes (M08.011, M08.012, ...) otherwise crowd the general rubric out of
+  # its own candidate list.
+  max_per_category: 3
+  retrieval_limit: 20
+  # Edit-1 neighbour generation over 63k Mondo labels costs more than it returns; the
+  # deterministic tiers plus token retrieval already surface the near-misses.
+  enable_fuzzy: false
+  # Retrieval-only candidates below this share of the subject's discriminative IDF mass are
+  # token-overlap noise, and the subject settles at rung D8 with RJ-004 instead of joining
+  # the adjudication queue. Measured on the full run: 0.3 removes 4,343 subjects (13% of the
+  # set) from the queue and costs 1 in-scope gold exact match. 0.5 would remove 54% of the
+  # queue and cost 22 — the wrong trade, since queue length is cheap and recall is not.
+  min_retrieval_score: 0.3
+
+agent:
+  enabled: true
+  # The one real cost lever in the pipeline. A full unsettled queue for Mondo x ICD-10-CM is
+  # tens of thousands of items; max_items caps it, highest-priority first, and everything
+  # beyond the cap is queued as EXPERT_REVIEW with the reason recorded.
+  model: claude-opus-5
+  batch_size: 12
+  # Batches in flight. Adjudication is entirely latency-bound.
+  concurrency: 12
+  max_items: 1200
+  max_tokens: 16000
+  effort: high
+  cache_dir: .align_cache
+
+# Consistency conditioning. The pipeline's confidence is local — one subject, its candidates,
+# its flags. Boomer is what notices that accepting a row makes another impossible: two Mondo
+# terms cannot both be exactly A30.1, and a mapping into a child code contradicts one into its
+# parent. On the reference run it overruled 230 mappings the pipeline was confident about,
+# including Mondo's own "Cushing disease due to pituitary adenoma = E24 Cushing's syndrome",
+# which is the SC-006 example the rule registry is written around.
+boomer:
+  enabled: true
+  # Empty searches PATH, then ~/tools/boomer/bin/boomer. A configured path that does not exist
+  # is an error, not a silent fall back to some other binary.
+  executable: ""
+  window_count: 5
+  runs: 3
+  # Cliques at or below this size are searched exhaustively, so their scores — and therefore
+  # the max-marginal posteriors derived from them — are exact. The largest clique in the
+  # reference run held 6 mappings, all on ICD10CM:E23.0 Hypopituitarism.
+  exhaustive_search_limit: 12
+  subsequent_solutions: 3
+  # The second, pinned-variant pass that produces boomer_posterior. Costs one extra Boomer
+  # invocation over ~4,000 renamed hypotheses; about 10s on the full set.
+  marginals: true
+  max_marginal_clique_size: 8
+  timeout_seconds: 3600
+
+evaluation:
+  enabled: true
+  gold_qualifier: MONDO:equivalentTo
+  # Must stay true. With hold_out false, Mondo's own asserted mappings are fed in as proxy
+  # evidence and the reported precision/recall become meaningless.
+  hold_out: true
+
+limit_subjects: 0
+output_root: alignments
