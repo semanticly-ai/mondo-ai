@@ -148,6 +148,31 @@ align-reconciled-status status run="mondo-snomed" n="30":
         substr($k["object_label"],1,36), $k["seed_predicates"], $k["risk_flags"]; shown++}' \
         {{align_out}}/{{run}}/consolidated.sssom.tsv
 
+# ============== Reviewing an existing mapping set ==============
+#
+# Same rows out as in, with review_status/tier, lexical_confidence, boomer_prior,
+# boomer_posterior_confidence and reviewer_confidence added. The config names the two
+# resources the file maps between. Boomer runs per box; the reviewing model sees at most
+# review.max_items rows, most contested first, and that is the one thing here that costs
+# money. Extra flags pass through: --no-agent, --max-agent-items N, --model, --no-boomer, -o.
+
+# Review an SSSOM file, e.g. `just review-mapping data/align/mondo_snomed.sssom.tsv`
+[group('review')]
+review-mapping file config=(align_conf + "/mondo-snomed.yaml") *args:
+    uv run mondo-ai align review "{{file}}" -c {{config}} {{args}}
+
+# Deterministic review: no model calls, no cost
+[group('review')]
+review-mapping-deterministic file config=(align_conf + "/mondo-snomed.yaml"):
+    uv run mondo-ai align review "{{file}}" -c {{config}} --no-agent
+
+# Mondo's own SNOMED CT mappings as a standalone SSSOM file, the first review target
+[group('review')]
+review-mondo-snomed-input:
+    @test -f {{align_data}}/mondo.sssom.tsv || (echo "run: just align-download-mondo-sssom" && exit 1)
+    uv run mondo-ai align sssom-subset {{align_data}}/mondo.sssom.tsv -s MONDO -t SCTID \
+        -o {{align_data}}/mondo_snomed.sssom.tsv
+
 # ============== Inspecting ==============
 
 # Why did this subject come out that way? Deterministic stages for one term, no model call

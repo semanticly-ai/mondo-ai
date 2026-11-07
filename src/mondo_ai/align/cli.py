@@ -69,6 +69,62 @@ def run(
 
 
 @app.command()
+def review(
+    input_path: Annotated[Path, typer.Argument(help="Candidate SSSOM TSV to review.")],
+    config: Annotated[Path, typer.Option(
+        "--config", "-c", help="Run config naming the subject/object resources.")] = Path(
+        "conf/align/mondo-snomed.yaml"),
+    out: Annotated[Path | None, typer.Option(
+        "--out", "-o", help="Output directory (default alignments/review/<file stem>).")] = None,
+    no_agent: Annotated[bool, typer.Option("--no-agent", help="No reviewing model.")] = False,
+    max_agent_items: Annotated[
+        int, typer.Option(help="Cap rows sent to the reviewing model (0 = all).")] = -1,
+    model: Annotated[str, typer.Option(help="Override the reviewing model id.")] = "",
+    no_boomer: Annotated[bool, typer.Option("--no-boomer", help="Skip Boomer.")] = False,
+) -> None:
+    """Review an SSSOM file: same rows out, with lexical, Boomer and reviewer confidence."""
+    from mondo_ai.align.config import AlignmentConfig
+    from mondo_ai.align.review import ReviewRunner
+
+    cfg = AlignmentConfig.from_yaml(config)
+    if no_agent:
+        cfg.review.agent = False
+    if max_agent_items >= 0:
+        cfg.review.max_items = max_agent_items
+    if model:
+        cfg.agent.model = model
+    if no_boomer:
+        cfg.boomer.enabled = False
+    stem = input_path.name.removesuffix(".tsv").removesuffix(".sssom")
+    out_dir = out or cfg.output_root / "review" / stem
+
+    typer.echo(f"reviewing {input_path} against {cfg.subject.name} x {cfg.object.name}")
+    result = ReviewRunner(cfg, input_path, out_dir).run()
+    from collections import Counter
+
+    typer.echo("")
+    for tier, n in Counter(r["review_tier"] for r in result.table.rows).most_common():
+        typer.echo(f"  {tier or '(out of scope)':<14} {n:>8,}")
+    typer.echo("")
+    typer.echo(f"reviewed: {result.paths['reviewed']}")
+    typer.echo(f"report:   {result.paths['report']}")
+
+
+@app.command("sssom-subset")
+def sssom_subset(
+    source: Annotated[Path, typer.Argument(help="SSSOM TSV to take rows from.")],
+    subject_prefix: Annotated[str, typer.Option("--subject-prefix", "-s")],
+    object_prefix: Annotated[str, typer.Option("--object-prefix", "-t")],
+    out: Annotated[Path, typer.Option("--out", "-o", help="SSSOM TSV to write.")],
+) -> None:
+    """Write the rows of an SSSOM file between two prefixes, metadata kept."""
+    from mondo_ai.align.review import subset_sssom
+
+    n = subset_sssom(source, out, subject_prefix, object_prefix)
+    typer.echo(f"{out}: {n:,} {subject_prefix} -> {object_prefix} rows")
+
+
+@app.command()
 def explain(
     config: Annotated[Path, typer.Option("--config", "-c", help="Run config YAML.")],
     subject_id: Annotated[str, typer.Argument(help="Subject CURIE to explain.")],

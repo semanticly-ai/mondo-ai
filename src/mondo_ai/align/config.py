@@ -231,6 +231,44 @@ class ReconcileConfig(BaseModel):
     boomer: bool = True
 
 
+class ReviewConfig(BaseModel):
+    """Review mode: an existing SSSOM file in, the same rows out with confidence columns.
+
+    The run's ``subject``/``object`` resources supply labels and hierarchies, its
+    ``agent`` block the model settings and its ``boomer`` block the solver settings; only
+    what review adds lives here.
+
+    Attributes:
+        default_confidence: Prior for rows that carry no ``confidence`` of their own.
+        agent: Whether the reviewing model runs at all.
+        max_items: Rows sent to the reviewing model, most contested first. 0 means all.
+            This is the cost lever: every row is one model judgement.
+        hub_children: Only used when a cycle component exceeds ``max_box`` and has to be cut:
+            a mapped concept that is the nearest mapped ancestor of more than this many
+            mapped concepts does not fan out into halos.
+        max_box: Hypotheses per box. Boxes are cycle components, which are exact; one
+            larger than this is cut at its most generic hubs, then chunked, and every row
+            says which box it was solved in and whether it was cut.
+        halo_depth: For cut boxes only: links of neighbouring hypotheses solved alongside
+            the core and never read back. 0 makes a cut a hard cut.
+        bin_hypotheses: Boxes are renamed apart and packed into one Boomer invocation up to
+            this many hypotheses, so a thousand small boxes are not a thousand JVM starts.
+        workers: Boomer invocations in flight at once.
+        bin_timeout_seconds: Wall clock per invocation. A bin that times out is retried box
+            by box before its rows are given up as unsolved.
+    """
+
+    default_confidence: float = Field(default=0.95, ge=0.0, le=1.0)
+    agent: bool = True
+    max_items: int = Field(default=400, ge=0)
+    hub_children: int = Field(default=40, ge=2)
+    max_box: int = Field(default=150, ge=2)
+    halo_depth: int = Field(default=1, ge=0, le=3)
+    bin_hypotheses: int = Field(default=1500, ge=2)
+    workers: int = Field(default=6, ge=1, le=32)
+    bin_timeout_seconds: int = Field(default=900, ge=30)
+
+
 class AlignmentConfig(BaseModel):
     """A complete alignment run.
 
@@ -259,6 +297,7 @@ class AlignmentConfig(BaseModel):
     boomer: BoomerConfig = Field(default_factory=BoomerConfig)
     evaluation: EvalConfig = Field(default_factory=EvalConfig)
     reconcile: ReconcileConfig = Field(default_factory=ReconcileConfig)
+    review: ReviewConfig = Field(default_factory=ReviewConfig)
     limit_subjects: int = Field(default=0, ge=0)
     subject_id_file: Path | None = None
     output_root: Path = Path("alignments")
