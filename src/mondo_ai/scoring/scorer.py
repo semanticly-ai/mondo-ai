@@ -1,166 +1,58 @@
-"""Evidence scoring module.
+"""Inclusion score S for evidence packets.
 
-This module calculates the Net Evidence Ratio (NER) for evidence packets
-based on their SIEVE evidence lines.
+S is computed by sieve's reference implementation (``sieve.inclusion_score``, D-063):
+every parameter comes from the claim type's AggregationRule frozen in the packet's
+``reference_snapshot``, so the same packet version always scores the same. Per valid
+line w = d * s * q * c, the strongest line per independence cluster counts,
+L = L0 + k * sum(w), and S = tanh(L / 2) in [-1, 1].
 
-The NER formula is:
-    NER = (S+ - S-) / (S+ + S- + S?)
-
-Where:
-    S+ = sum of scores for evidence lines that support
-    S- = sum of scores for evidence lines that dispute
-    S? = sum of scores for evidence lines that are neutral
-
-NER ranges from -1 (all disputing) to +1 (all supporting).
+The score is written onto the statement in the profile's "proposition assessment mode":
+``score`` = S, ``strength`` = its band, ``direction`` = its sign. It is not a decision:
+nothing here accepts or rejects a claim.
 
 Example:
-    >>> from mondo_ai.scoring.scorer import Scorer
-    >>> scorer = Scorer()
-    >>> score = scorer.calculate_ner(packet)  # doctest: +SKIP
+    >>> from mondo_ai.scoring.scorer import score_packet
+    >>> packet = score_packet(packet)  # doctest: +SKIP
+    >>> packet["statement"]["score"]  # doctest: +SKIP
+    0.9085
 """
 
-from mondo_ai.datamodel import (
-    EvidenceDirection,
-    EvidencePacket,
-    Score,
-)
+from typing import Any, Iterable
+
+from sieve.inclusion_score import ScoreBreakdown
+from sieve.inclusion_score import score_packet as _reference_score
 
 
-class Scorer:
-    """Calculate evidence scores for packets."""
+def explain(packet: dict[str, Any]) -> ScoreBreakdown:
+    """Compute S and every step that produced it, without changing the packet."""
+    return _reference_score(packet)
 
-    def __init__(
-        self,
-        accept_threshold: float = 0.7,
-        reject_threshold: float = -0.3,
-    ) -> None:
-        """Initialize scorer with thresholds.
 
-        Args:
-            accept_threshold: Minimum NER to auto-accept.
-            reject_threshold: Maximum NER to auto-reject.
-        """
-        self.accept_threshold = accept_threshold
-        self.reject_threshold = reject_threshold
+def score_packet(packet: dict[str, Any]) -> dict[str, Any]:
+    """Set the statement's score, strength and direction from S; return the packet.
 
-    def calculate_ner(self, packet: EvidencePacket) -> float:
-        """Calculate Net Evidence Ratio for a packet.
+    >>> rule = {"id": "r", "claim_type": "SynonymStatement", "scaling_factor": 2.0,
+    ...         "strength_bands": ["strong >= 0.8", "moderate >= 0.4", "weak < 0.4"]}
+    >>> line = {"id": "l", "type": "SieveEvidenceLine", "direction_of_evidence_provided": "supports",
+    ...         "score_of_evidence_provided": 0.9, "has_evidence_items": [],
+    ...         "contributions": [{"method_type": "RULE_BASED_STRENGTH"}]}
+    >>> p = {"statement": {"type": "SynonymStatement", "has_evidence_lines": [line]},
+    ...      "reference_snapshot": {"aggregation_rules": [rule]}}
+    >>> score_packet(p)["statement"]["score"], p["statement"]["strength"], p["statement"]["direction"]
+    (0.4219, 'moderate', 'supports')
+    """
+    breakdown = _reference_score(packet)
+    statement = packet["statement"]
+    statement["score"] = round(breakdown.s, 4)
+    for key in ("strength", "direction"):
+        statement.pop(key, None)
+    if breakdown.band:
+        statement["strength"] = breakdown.band
+    if breakdown.s:
+        statement["direction"] = "supports" if breakdown.s > 0 else "disputes"
+    return packet
 
-        Args:
-            packet: Evidence packet with evidence lines.
 
-        Returns:
-            NER score between -1 and 1.
-
-        Example:
-            >>> from mondo_ai.datamodel import (
-            ...     EvidencePacket, SieveStatement, SieveEvidenceLine,
-            ...     ConcordanceItem, CurationStatus, EvidenceDirection,
-            ...     Coding, EvidenceItemType
-            ... )
-            >>> from mondo_ai.datamodel.mappings import predicate_to_coding
-            >>> from mondo_ai.datamodel import StatementPredicate
-            >>> stmt = SieveStatement(
-            ...     id="test",
-            ...     type="SieveStatement",
-            ...     subject="MONDO:0000001",
-            ...     predicate=predicate_to_coding(StatementPredicate.EXACT_SYNONYM),
-            ...     object="test synonym"
-            ... )
-            >>> item = ConcordanceItem(
-            ...     id="ev1",
-            ...     type="ConcordanceItem",
-            ...     source_name="test",
-            ... )
-            >>> line = SieveEvidenceLine(
-            ...     id="el1",
-            ...     type="SieveEvidenceLine",
-            ...     has_evidence_items=[item],
-            ...     direction_of_evidence_provided="supports",
-            ...     score_of_evidence_provided=0.9,
-            ... )
-            >>> packet = EvidencePacket(
-            ...     id="pkt1",
-            ...     statement=stmt,
-            ...     has_evidence_lines=[line]
-            ... )
-            >>> scorer = Scorer()
-            >>> score = scorer.calculate_ner(packet)
-            >>> score == 1.0
-            True
-        """
-        if not packet.has_evidence_lines:
-            return 0.0
-
-        s_plus = 0.0  # Supporting
-        s_minus = 0.0  # Disputing
-        s_uncertain = 0.0  # Neutral
-
-        for line in packet.has_evidence_lines:
-            # Get the score for this evidence line
-            score = line.score_of_evidence_provided or 1.0
-            direction = line.direction_of_evidence_provided or "neutral"
-
-            if direction == EvidenceDirection.supports.value or direction == "supports":
-                s_plus += score
-            elif direction == EvidenceDirection.disputes.value or direction == "disputes":
-                s_minus += score
-            else:  # neutral
-                s_uncertain += score
-
-        total = s_plus + s_minus + s_uncertain
-        if total == 0:
-            return 0.0
-
-        return (s_plus - s_minus) / total
-
-    def score_packet(self, packet: EvidencePacket) -> EvidencePacket:
-        """Calculate and set the evidence score on a packet's synthesis.
-
-        Args:
-            packet: Evidence packet to score.
-
-        Returns:
-            Packet with evidence_synthesis.score set.
-        """
-        ner = self.calculate_ner(packet)
-
-        # Create or update synthesis with score
-        if packet.evidence_synthesis is None:
-            from mondo_ai.datamodel import EvidenceSynthesis
-            packet.evidence_synthesis = EvidenceSynthesis(
-                summary="Scored by deterministic evidence scorer",
-                score=Score(value=ner, description="Net Evidence Ratio (NER)"),
-            )
-        else:
-            packet.evidence_synthesis.score = Score(
-                value=ner, description="Net Evidence Ratio (NER)"
-            )
-
-        return packet
-
-    def score_packets(self, packets: list[EvidencePacket]) -> list[EvidencePacket]:
-        """Score multiple packets.
-
-        Args:
-            packets: List of packets to score.
-
-        Returns:
-            Scored packets.
-        """
-        return [self.score_packet(p) for p in packets]
-
-    def get_recommendation(self, score: float) -> str:
-        """Get recommendation based on score.
-
-        Args:
-            score: NER score.
-
-        Returns:
-            "ACCEPT", "REJECT", or "REVIEW".
-        """
-        if score >= self.accept_threshold:
-            return "ACCEPT"
-        if score <= self.reject_threshold:
-            return "REJECT"
-        return "REVIEW"
+def score_packets(packets: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Score many packets in place; return them as a list."""
+    return [score_packet(p) for p in packets]

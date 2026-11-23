@@ -4,28 +4,29 @@
 <h1>Evidence Packets <span class="text-muted" style="font-size:0.9rem; font-weight:400;">{{ "{:,}".format(total) }} results</span></h1>
 
 <form method="get" action="/packets" class="filters">
-    <input type="text" name="q" value="{{ q }}" placeholder="Search subject, object, or ID...">
+    <input type="text" name="q" value="{{ filters.q }}" placeholder="Search statement, subject, object or ID...">
+    <select name="claim_type">
+        <option value="">All claim types</option>
+        {% for t in available_claim_types %}
+        <option value="{{ t }}" {{ 'selected' if filters.claim_type == t }}>{{ t }}</option>
+        {% endfor %}
+    </select>
+    <select name="review_state">
+        <option value="">All review states</option>
+        {% for r in available_review_states %}
+        <option value="{{ r }}" {{ 'selected' if filters.review_state == r }}>{{ r }}</option>
+        {% endfor %}
+    </select>
     <select name="source">
         <option value="">All sources</option>
         {% for s in available_sources %}
-        <option value="{{ s }}" {{ 'selected' if source == s }}>{{ s }}</option>
+        <option value="{{ s }}" {{ 'selected' if filters.source == s }}>{{ s }}</option>
         {% endfor %}
     </select>
-    <select name="predicate">
-        <option value="">All predicates</option>
-        {% for p in available_predicates %}
-        <option value="{{ p }}" {{ 'selected' if predicate == p }}>{{ p }}</option>
-        {% endfor %}
-    </select>
-    <select name="min_evidence">
-        <option value="">Any # evidence lines</option>
-        {% for n in available_evidence_counts %}
-        <option value="{{ n }}" {{ 'selected' if min_evidence|string == n|string }}>{{ n }}+ evidence lines</option>
-        {% endfor %}
-    </select>
-    <input type="text" name="subject" value="{{ subject }}" placeholder="Filter by subject ID..." style="min-width:160px">
+    <input type="number" name="min_score" value="{{ filters.min_score }}" step="0.05" min="-1" max="1" placeholder="min S" style="width:6rem">
+    <input type="number" name="max_score" value="{{ filters.max_score }}" step="0.05" min="-1" max="1" placeholder="max S" style="width:6rem">
     <button type="submit" class="btn">Filter</button>
-    {% if q or source or predicate or subject or min_evidence %}
+    {% if active %}
     <a href="/packets" class="btn btn-outline">Clear</a>
     {% endif %}
 </form>
@@ -34,74 +35,68 @@
 <table>
     <thead>
         <tr>
-            <th>Subject</th>
-            <th>Predicate</th>
-            <th>Object</th>
+            <th>Statement</th>
+            <th>Claim type</th>
+            <th>S</th>
+            <th>Lines</th>
             <th>Sources</th>
-            <th>Evidence</th>
-            <th>Score</th>
-            <th>Status</th>
+            <th>Review state</th>
         </tr>
     </thead>
     <tbody>
         {% for p in packets %}
         <tr>
             <td>
-                <a href="/packets/{{ p.id }}">
-                    {% if p.subject_label %}{{ p.subject_label }}{% else %}{{ p.subject }}{% endif %}
-                </a>
-                <div class="text-muted" style="font-size:0.75rem; font-family: var(--mono);">{{ p.subject }}</div>
+                <a href="{{ packet_path(p.packet_id) }}">{{ p.statement_text or (p.subject ~ ' ' ~ (p.predicate_label or p.predicate) ~ ' ' ~ p.object) }}</a>
+                <div class="text-muted mono" style="font-size:0.75rem;">{{ p.subject }}</div>
             </td>
-            <td>{{ p.predicate }}</td>
-            <td class="truncate">
-                {% if p.object_label %}{{ p.object_label }}{% else %}{{ p.object }}{% endif %}
+            <td>{{ p.claim_type }}</td>
+            <td style="white-space:nowrap">
+                {% if p.score is not none %}{{ "%.2f"|format(p.score) }}{% else %}-{% endif %}
+                {% if p.strength %}<span class="badge badge-strength-{{ p.strength }}">{{ p.strength }}</span>{% endif %}
             </td>
+            <td style="text-align:center">{{ p.line_count }}</td>
             <td>
                 {% for s in p.sources %}
                 <span class="badge badge-source">{{ s }}</span>
                 {% endfor %}
             </td>
-            <td style="text-align:center">{{ p.n_evidence }}</td>
-            <td style="text-align:center">
-                {% if p.score is not none %}
-                {{ "%.2f"|format(p.score) }}
-                {% else %}-{% endif %}
-            </td>
-            <td><span class="badge badge-status-{{ p.status }}">{{ p.status }}</span></td>
+            <td><span class="badge badge-state-{{ p.review_state }}">{{ p.review_state }}</span></td>
         </tr>
         {% endfor %}
         {% if not packets %}
-        <tr><td colspan="7" style="text-align:center; padding:2rem; color:var(--text-muted);">No packets match your filters.</td></tr>
+        <tr><td colspan="6" style="text-align:center; padding:2rem; color:var(--text-muted);">No packets match your filters.</td></tr>
         {% endif %}
     </tbody>
 </table>
 </div>
 
 {% if total_pages > 1 %}
+{% set qs = query_string %}
 <div class="pagination">
     {% if page > 1 %}
-    <a href="?page={{ page - 1 }}&per_page={{ per_page }}&q={{ q }}&source={{ source }}&predicate={{ predicate }}&subject={{ subject }}&min_evidence={{ min_evidence }}">&laquo; Prev</a>
+    <a href="?page={{ page - 1 }}&per_page={{ per_page }}&{{ qs }}">&laquo; Prev</a>
     {% endif %}
 
     {% set start_page = [1, page - 3]|max %}
     {% set end_page = [total_pages, page + 3]|min %}
 
     {% if start_page > 1 %}
-    <a href="?page=1&per_page={{ per_page }}&q={{ q }}&source={{ source }}&predicate={{ predicate }}&subject={{ subject }}&min_evidence={{ min_evidence }}">1</a>
+    <a href="?page=1&per_page={{ per_page }}&{{ qs }}">1</a>
     {% if start_page > 2 %}<span class="info">...</span>{% endif %}
     {% endif %}
 
-    {% for p in range(start_page, end_page + 1) %}
-    <a href="?page={{ p }}&per_page={{ per_page }}&q={{ q }}&source={{ source }}&predicate={{ predicate }}&subject={{ subject }}&min_evidence={{ min_evidence }}" {% if p == page %}class="current"{% endif %}>{{ p }}</a>
+    {% for n in range(start_page, end_page + 1) %}
+    <a href="?page={{ n }}&per_page={{ per_page }}&{{ qs }}" {% if n == page %}class="current"{% endif %}>{{ n }}</a>
     {% endfor %}
 
     {% if end_page < total_pages %}
     {% if end_page < total_pages - 1 %}<span class="info">...</span>{% endif %}
-    <a href="?page={{ total_pages }}&per_page={{ per_page }}&q={{ q }}&source={{ source }}&predicate={{ predicate }}&subject={{ subject }}&min_evidence={{ min_evidence }}">{{ total_pages }}</a>
+    <a href="?page={{ total_pages }}&per_page={{ per_page }}&{{ qs }}">{{ total_pages }}</a>
     {% endif %}
 
     {% if page < total_pages %}
-    <a href="?page={{ page + 1 }}&per_page={{ per_page }}&q={{ q }}&source={{ source }}&predicate={{ predicate }}&subject={{ subject }}&min_evidence={{ min_evidence }}">Next &raquo;</a>
+    <a href="?page={{ page + 1 }}&per_page={{ per_page }}&{{ qs }}">Next &raquo;</a>
     {% endif %}
 
     <span class="info">Page {{ page }} of {{ total_pages }}</span>

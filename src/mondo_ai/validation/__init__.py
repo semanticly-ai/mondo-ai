@@ -1,19 +1,21 @@
-"""Validation module for evidence packets using the CurationRecord LinkML schema."""
+"""Validation of evidence packets against the SIEVE profile (LinkML schema + profile checks)."""
 
 from mondo_ai.validation.validator import (
     ValidationError,
     ValidationResult,
-    convert_packet_to_curation_record_dict,
     validate_packet_data,
-    validate_packet_file,
     validate_packet_directory,
+    validate_packet_file,
+    validate_packets,
+    validate_store,
 )
 
 __all__ = [
     "ValidationError",
     "ValidationResult",
-    "convert_packet_to_curation_record_dict",
     "validate_packet_data",
-    "validate_packet_file",
     "validate_packet_directory",
+    "validate_packet_file",
+    "validate_packets",
+    "validate_store",
 ]

@@ -6,276 +6,141 @@ schema_path := "src/mondo_ai/schema/mondo_ai_sieve.yaml"
 oak_config := "conf/oak_config.yaml"
 evidence_packets_dir := "evidence_packets"
 data_dir := "data"
-snapshots_dir := "data/snapshots"
 
-# OWL file URLs
+# Sources are downloaded into a dated directory; override with SOURCE_DATE=YYYY-MM-DD
+source_date := env_var_or_default("SOURCE_DATE", "2026-11-20")
+owl_dir := data_dir / "owl" / source_date
+snapshots_dir := data_dir / "snapshots" / source_date
+
+# Source URLs (the latest release behind each PURL)
 doid_url := "http://purl.obolibrary.org/obo/doid.owl"
-ordo_url := "http://www.orphadata.org/data/ORDO/ordo_orphanet.owl"
+ordo_url := "https://www.orphadata.com/data/ontologies/ordo/last_version/ORDO_en_4.9.owl"
+omim_url := "https://github.com/monarch-initiative/omim/releases/latest/download/omim.owl"
+icd10cm_url := "http://purl.obolibrary.org/obo/mondo/sources/icd10cm.owl"
 mondo_url := "http://purl.obolibrary.org/obo/mondo.owl"
-# OMIM requires a license key, use local mondo-ingest mirror
-omim_mirror := "/Users/matentzn/ws/mondo-ingest/src/ontology/tmp/mirror-omim.owl"
-# SSSOM mapping file from mondo-ingest
-sssom_mirror := "/Users/matentzn/ws/mondo-ingest/src/ontology/tmp/mondo.sssom.tsv"
+sssom_url := "http://purl.obolibrary.org/obo/mondo/mappings/mondo.sssom.tsv"
+odk_image := "obolibrary/odklite:v1.7"
 
 # ============== Acquisition recipes ==============
 
-# Create data directories
+# Download every source, Mondo and mondo.sssom.tsv into data/owl/SOURCE_DATE
 [group('acquisition')]
-init-data:
-    mkdir -p {{data_dir}}/owl
-    mkdir -p {{snapshots_dir}}
+download-all:
+    mkdir -p {{owl_dir}}
+    curl -sSL --retry 3 -o {{owl_dir}}/doid.owl "{{doid_url}}"
+    curl -sSL --retry 3 -o {{owl_dir}}/ordo.owl "{{ordo_url}}"
+    curl -sSL --retry 3 -o {{owl_dir}}/omim.owl "{{omim_url}}"
+    curl -sSL --retry 3 -o {{owl_dir}}/icd10cm.owl "{{icd10cm_url}}"
+    curl -sSL --retry 3 -o {{owl_dir}}/mondo.owl "{{mondo_url}}"
+    curl -sSL --retry 3 -o {{owl_dir}}/mondo.sssom.tsv "{{sssom_url}}"
+    just convert-omim
+    just list-owl
 
-# Download DOID OWL file
+# The OMIM release is OWL functional syntax; convert it to RDF/XML for pyoxigraph
 [group('acquisition')]
-download-doid: init-data
-    @echo "Downloading DOID..."
-    curl -L -o {{data_dir}}/owl/doid.owl "{{doid_url}}"
-    @echo "Checksum: $(shasum -a 256 {{data_dir}}/owl/doid.owl | cut -d' ' -f1)"
-
-# Download ORDO OWL file
-[group('acquisition')]
-download-ordo: init-data
-    @echo "Downloading ORDO..."
-    curl -L -o {{data_dir}}/owl/ordo.owl "{{ordo_url}}"
-    @echo "Checksum: $(shasum -a 256 {{data_dir}}/owl/ordo.owl | cut -d' ' -f1)"
-
-# Download Mondo OWL file
-[group('acquisition')]
-download-mondo: init-data
-    @echo "Downloading Mondo..."
-    curl -L -o {{data_dir}}/owl/mondo.owl "{{mondo_url}}"
-    @echo "Checksum: $(shasum -a 256 {{data_dir}}/owl/mondo.owl | cut -d' ' -f1)"
-
-# Copy OMIM from mondo-ingest mirror (requires local mondo-ingest)
-[group('acquisition')]
-copy-omim: init-data
-    @echo "Copying OMIM from mondo-ingest mirror..."
-    @if [ -f "{{omim_mirror}}" ]; then \
-        cp "{{omim_mirror}}" {{data_dir}}/owl/omim.owl; \
-        echo "Checksum: $$(shasum -a 256 {{data_dir}}/owl/omim.owl | cut -d' ' -f1)"; \
-    else \
-        echo "Error: OMIM mirror not found at {{omim_mirror}}"; \
-        echo "Please run mondo-ingest first or update the path"; \
-        exit 1; \
-    fi
-
-# Copy SSSOM mapping file from mondo-ingest
-[group('acquisition')]
-copy-sssom: init-data
-    @echo "Copying SSSOM mapping file..."
-    @if [ -f "{{sssom_mirror}}" ]; then \
-        cp "{{sssom_mirror}}" {{data_dir}}/mondo.sssom.tsv; \
-        echo "Copied: {{data_dir}}/mondo.sssom.tsv"; \
-        wc -l {{data_dir}}/mondo.sssom.tsv; \
-    else \
-        echo "Error: SSSOM file not found at {{sssom_mirror}}"; \
-        echo "Please run mondo-ingest first or update the path"; \
-        exit 1; \
-    fi
-
-# Download all OWL files and SSSOM
-[group('acquisition')]
-download-all: download-doid download-ordo download-mondo copy-omim copy-sssom
-    @echo "All OWL files and SSSOM downloaded"
+convert-omim:
+    docker run --rm -e ROBOT_JAVA_ARGS=-Xmx12G -v "$(pwd)/{{owl_dir}}:/work" -w /work {{odk_image}} robot convert -i omim.owl --format owl -o omim.rdf.owl
 
 # List downloaded OWL files with checksums
 [group('acquisition')]
 list-owl:
-    @echo "Downloaded OWL files:"
-    @ls -lh {{data_dir}}/owl/*.owl 2>/dev/null || echo "No OWL files found"
-    @echo ""
-    @echo "Checksums:"
-    @shasum -a 256 {{data_dir}}/owl/*.owl 2>/dev/null || true
+    @ls -lh {{owl_dir}}
+    @shasum -a 256 {{owl_dir}}/*.owl {{owl_dir}}/*.tsv
 
 # ============== Extraction recipes ==============
 
-# Extract snapshot from DOID
+# Extract one source into a ResourceSnapshot: just extract doid doid.owl DOID_
 [group('extraction')]
-extract-doid:
-    uv run mondo-ai extract-owl {{data_dir}}/owl/doid.owl -r doid -o {{snapshots_dir}}/doid_snapshot.yaml --iri-filter "DOID_"
+extract id file filter:
+    uv run mondo-ai extract-owl {{owl_dir}}/{{file}} -r {{id}} -o {{snapshots_dir}}/{{id}}.yaml --iri-filter "{{filter}}" --include-deprecated
 
-# Extract snapshot from ORDO
+# Extract every source and Mondo into data/snapshots/SOURCE_DATE
 [group('extraction')]
-extract-ordo:
-    uv run mondo-ai extract-owl {{data_dir}}/owl/ordo.owl -r ordo -o {{snapshots_dir}}/ordo_snapshot.yaml --iri-filter "Orphanet_"
-
-# Extract snapshot from OMIM
-[group('extraction')]
-extract-omim:
-    uv run mondo-ai extract-owl {{data_dir}}/owl/omim.owl -r omim -o {{snapshots_dir}}/omim_snapshot.yaml --iri-filter "omim.org/entry"
-
-# Extract snapshot from Mondo
-[group('extraction')]
-extract-mondo:
-    uv run mondo-ai extract-owl {{data_dir}}/owl/mondo.owl -r mondo -o {{snapshots_dir}}/mondo_snapshot.yaml --iri-filter "MONDO_"
-
-# Extract all snapshots
-[group('extraction')]
-extract-all: extract-doid extract-ordo extract-omim extract-mondo
-    @echo "All snapshots extracted"
+extract-all:
+    just extract doid doid.owl DOID_
+    just extract ordo ordo.owl Orphanet_
+    just extract omim omim.rdf.owl omim.org/entry/
+    just extract icd10cm icd10cm.owl ontology/ICD10CM/
+    just extract mondo mondo.owl MONDO_
 
 # List extracted snapshots
 [group('extraction')]
 list-snapshots:
-    @echo "Extracted snapshots:"
-    @ls -lh {{snapshots_dir}}/*.yaml 2>/dev/null || echo "No snapshots found"
+    @ls -lh {{snapshots_dir}}
+
+# ============== Packet Building recipes ==============
+
+# Rebuild packet_store/ and packet_store_merged/ (synonyms, subclass, mappings) from the snapshots
+[group('packets')]
+build-packets:
+    uv run python run_full_pipeline.py {{snapshots_dir}} {{owl_dir}}
+
+# Download, extract and rebuild everything
+[group('packets')]
+rebuild-all: download-all extract-all build-packets
 
 # ============== Validation recipes ==============
 
-# Validate all evidence packets against the schema
+# Validate one packet YAML/JSON file against the schema
 [group('validation')]
-validate-schema file="":
-    @if [ -n "{{file}}" ]; then \
-        uv run linkml-validate --schema {{schema_path}} --target-class EvidencePacket {{file}}; \
-    else \
-        for f in {{evidence_packets_dir}}/pkt_*.yaml; do \
-            echo "Validating $$f..."; \
-            uv run linkml-validate --schema {{schema_path}} --target-class EvidencePacket "$$f"; \
-        done; \
-    fi
+validate-schema file:
+    uv run linkml-validate --schema {{schema_path}} --target-class EvidencePacket {{file}}
 
 # Validate reference citations in evidence packets using linkml-reference-validator
 [group('validation')]
-validate-references file="":
-    @if [ -n "{{file}}" ]; then \
-        uv run linkml-reference-validator validate data {{file}} --schema {{schema_path}} --target-class EvidencePacket; \
-    else \
-        for f in {{evidence_packets_dir}}/pkt_*.yaml; do \
-            echo "Validating references in $$f..."; \
-            uv run linkml-reference-validator validate data "$$f" --schema {{schema_path}} --target-class EvidencePacket; \
-        done; \
-    fi
+validate-references file:
+    uv run linkml-reference-validator validate data {{file}} --schema {{schema_path}} --target-class EvidencePacket
 
 # Cache a reference by PMID for faster validation
 [group('validation')]
 cache-reference pmid:
     uv run linkml-reference-validator cache reference {{pmid}}
 
-# Validate ontology term references in evidence packets using linkml-term-validator
+# Validate ontology term references in an evidence packet using linkml-term-validator
 [group('validation')]
-validate-terms file="":
-    @if [ -n "{{file}}" ]; then \
-        uv run linkml-term-validator validate-data {{file}} -s {{schema_path}} -t EvidencePacket --labels -c {{oak_config}}; \
-    else \
-        for f in {{evidence_packets_dir}}/pkt_*.yaml; do \
-            echo "Validating terms in $$f..."; \
-            uv run linkml-term-validator validate-data "$$f" -s {{schema_path}} -t EvidencePacket --labels -c {{oak_config}}; \
-        done; \
-    fi
+validate-terms file:
+    uv run linkml-term-validator validate-data {{file}} -s {{schema_path}} -t EvidencePacket --labels -c {{oak_config}}
 
 # Validate schema term references (prefixes, etc.)
 [group('validation')]
 validate-schema-terms:
     uv run linkml-term-validator validate-schema {{schema_path}}
 
-# Run all validations on evidence packets
-[group('validation')]
-validate-all: validate-schema validate-terms
-    @echo "All validations complete"
-
-# ============== Packet Building recipes ==============
-
-# Build evidence packets from a single snapshot
-[group('packets')]
-build-packets-doid:
-    uv run mondo-ai build-packets {{snapshots_dir}}/doid_snapshot.yaml --sssom {{data_dir}}/mondo.sssom.tsv --source-id doid --source-name "Disease Ontology" -o {{evidence_packets_dir}}
-
-[group('packets')]
-build-packets-ordo:
-    uv run mondo-ai build-packets {{snapshots_dir}}/ordo_snapshot.yaml --sssom {{data_dir}}/mondo.sssom.tsv --source-id ordo --source-name "Orphanet" -o {{evidence_packets_dir}}
-
-[group('packets')]
-build-packets-omim:
-    uv run mondo-ai build-packets {{snapshots_dir}}/omim_snapshot.yaml --sssom {{data_dir}}/mondo.sssom.tsv --source-id omim --source-name "OMIM" -o {{evidence_packets_dir}}
-
-# Build packets from all sources and merge
-[group('packets')]
-build-packets-all:
-    uv run mondo-ai build-packets-multi \
-        --snapshot {{snapshots_dir}}/doid_snapshot.yaml --source-id doid --source-name "Disease Ontology" \
-        --snapshot {{snapshots_dir}}/ordo_snapshot.yaml --source-id ordo --source-name "Orphanet" \
-        --snapshot {{snapshots_dir}}/omim_snapshot.yaml --source-id omim --source-name "OMIM" \
-        --sssom {{data_dir}}/mondo.sssom.tsv \
-        -o {{evidence_packets_dir}}
-
-# List generated evidence packets
-[group('packets')]
-list-packets:
-    @echo "Generated evidence packets:"
-    @ls -lh {{evidence_packets_dir}}/pkt_*.yaml 2>/dev/null | head -20 || echo "No packets found"
-    @echo ""
-    @echo "Total packets: $$(ls {{evidence_packets_dir}}/pkt_*.yaml 2>/dev/null | wc -l || echo 0)"
-
 # ============== Scoring & Enrichment recipes ==============
 
-# Score all evidence packets
+# Re-score the merged store with the inclusion score
 [group('scoring')]
 score-packets:
-    uv run mondo-ai score {{evidence_packets_dir}}
-
-# Score packets with custom thresholds
-[group('scoring')]
-score-packets-strict:
-    uv run mondo-ai score {{evidence_packets_dir}} --accept 0.8 --reject -0.2
+    uv run mondo-ai score packet_store_merged
 
 # Enrich packets with PubMed literature (all packets)
 [group('enrichment')]
 enrich-packets:
-    uv run mondo-ai enrich {{evidence_packets_dir}} --max-papers 3
-
-# Enrich only low-scoring packets
-[group('enrichment')]
-enrich-low-score:
-    uv run mondo-ai enrich {{evidence_packets_dir}} --max-papers 3 --min-score 0.5
+    uv run mondo-ai enrich packet_store_merged --max-papers 3
 
 # Run AI synthesis on packets
 [group('synthesis')]
 synthesize-packets limit="10":
-    uv run mondo-ai synthesize {{evidence_packets_dir}} --limit {{limit}}
+    uv run mondo-ai synthesize packet_store_merged --limit {{limit}}
 
 # Run AI synthesis with OpenAI
 [group('synthesis')]
 synthesize-openai limit="10":
-    uv run mondo-ai synthesize {{evidence_packets_dir}} --provider openai --limit {{limit}}
+    uv run mondo-ai synthesize packet_store_merged --provider openai --limit {{limit}}
 
 # ============== Storage & Index recipes ==============
 
-# Build packet index from evidence_packets directory
-[group('storage')]
-build-index:
-    uv run mondo-ai index {{evidence_packets_dir}}
-
-# Show index statistics
+# Show store statistics
 [group('storage')]
 index-stats:
-    uv run mondo-ai stats
-
-# Query packets by score range
-[group('storage')]
-query-high-score:
-    uv run mondo-ai query --min-score 0.9 --limit 20
-
-# Query packets needing review
-[group('storage')]
-query-review:
-    uv run mondo-ai query --min-score 0.3 --max-score 0.7 --limit 20
+    uv run mondo-ai stats packet_store_merged
 
 # ============== Pipeline recipes ==============
 
-# Run the full pipeline to generate evidence packets
-[group('pipeline')]
-run-pipeline:
-    uv run python run_full_pipeline.py
-
-# Generate pydantic models from LinkML schema (SIEVE-based)
+# Generate pydantic models from the LinkML overlay (sieve's codegen fixes the date shadowing)
 [group('pipeline')]
 gen-pydantic:
-    uv run gen-pydantic {{schema_path}} > src/mondo_ai/datamodel/sieve_models.py
-
-# Migrate existing evidence packets to SIEVE format
-[group('pipeline')]
-migrate-packets:
-    uv run python scripts/migrate_to_sieve.py {{evidence_packets_dir}}/
+    uv run python -m sieve.datamodel.codegen {{schema_path}} src/mondo_ai/datamodel/sieve_models.py
 
 # ============== Web Application recipes ==============
 

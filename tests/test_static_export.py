@@ -1,87 +1,77 @@
 """The static exporter dumps the packet store to a JSON payload for the docs browser.
 
-The mkdocs "Evidence Browser" page loads this JSON client-side, so the browser
-ships as static files on GitHub Pages. The payload must carry enough per-packet
-metadata to render both the list and the expandable evidence detail.
+The mkdocs "Evidence Browser" page (docs/evidence/index.md) loads this JSON client-side,
+so the browser ships as static files on GitHub Pages. With ~200k packets the payload is a
+column header plus one array per packet rather than a list of keyed objects.
 """
 
 import json
 from pathlib import Path
 
-from mondo_ai.datamodel import EvidencePacket
-from mondo_ai.datamodel.loaders import packet_from_dict
 from mondo_ai.storage.jsonl_store import JSONLPacketStore
-from mondo_ai.web.static_export import export_web_data
+from mondo_ai.web.static_export import FIELDS, export_web_data
+from tests.test_packet_builder import _find, built  # noqa: F401  (fixture)
+
+PAGE = Path(__file__).parent.parent / "docs" / "evidence" / "index.md"
 
 
-def _packet(pid: str, subject: str, value: str) -> EvidencePacket:
-    return packet_from_dict(
-        {
-            "id": pid,
-            "status": "UNREVIEWED",
-            "statement": {
-                "id": "s_" + pid,
-                "type": "SieveStatement",
-                "subject": subject,
-                "subject_label": "asthma",
-                "object": value,
-                "object_label": value,
-                "predicate": {"code": "oio:hasExactSynonym", "label": "exact synonym"},
-            },
-            "has_evidence_lines": [
-                {
-                    "id": "el_" + pid,
-                    "type": "SieveEvidenceLine",
-                    "direction_of_evidence_provided": "supports",
-                    "strength_of_evidence_provided": "strong",
-                    "score_of_evidence_provided": 0.95,
-                    "has_evidence_items": [
-                        {
-                            "id": "ev_" + pid,
-                            "type": "ConcordanceItem",
-                            "source_name": "OMIM",
-                            "source_id": "omim",
-                            "source_subject": "OMIM:1",
-                            "mapping_justification": "skos:exactMatch",
-                        }
-                    ],
-                }
-            ],
-        }
-    )
-
-
-def test_export_web_data(tmp_path: Path) -> None:
+def _export(built, tmp_path: Path) -> dict:  # noqa: F811
     store_dir = tmp_path / "store"
-    store = JSONLPacketStore(store_dir)
-    store.add_packets(
-        [_packet("pkt_1", "MONDO:1", "bronchial asthma"), _packet("pkt_2", "MONDO:2", "AD")]
-    )
+    JSONLPacketStore(store_dir).add_packets(built["merged_list"])
     out = tmp_path / "docs" / "evidence" / "data.json"
-
     n = export_web_data(store_dir, out)
+    assert n == len(built["merged_list"])
+    return json.loads(out.read_text())
 
-    assert n == 2
-    assert out.exists()
-    payload = json.loads(out.read_text())
 
-    # Stats block
-    assert payload["stats"]["total_packets"] == 2
-    assert payload["stats"]["by_source"] == {"omim": 2}
-    assert payload["stats"]["by_predicate"].get("exact synonym") == 2
+def test_export_stats_block(built, tmp_path: Path):  # noqa: F811
+    stats = _export(built, tmp_path)["stats"]
+    assert stats["total_packets"] == len(built["merged_list"])
+    assert stats["by_claim_type"]["SynonymStatement"] > 0
+    assert set(stats["by_review_state"]) == {"PENDING_REVIEW", "NOT_VERIFIED"}
+    assert stats["by_source"]["infores:omim"] > 0
+    assert sum(stats["score_distribution"].values()) == stats["total_packets"]
+    assert stats["unique_subjects"] == 4
 
-    # Packet records with detail
-    ids = {p["id"] for p in payload["packets"]}
-    assert ids == {"pkt_1", "pkt_2"}
-    p1 = next(p for p in payload["packets"] if p["id"] == "pkt_1")
-    assert p1["subject"] == "MONDO:1"
-    assert p1["subject_label"] == "asthma"
-    assert p1["predicate"] == "exact synonym"
-    assert p1["object"] == "bronchial asthma"
-    assert p1["sources"] == ["omim"]
-    assert p1["score"] is not None
-    ev = p1["evidence"][0]
-    assert ev["source"] == "OMIM"
-    assert ev["direction"] == "supports"
-    assert ev["strength"] == "strong"
-    assert ev["justification"] == "skos:exactMatch"
+
+def test_export_packet_rows(built, tmp_path: Path):  # noqa: F811
+    payload = _export(built, tmp_path)
+    assert payload["fields"] == FIELDS
+    rows = [dict(zip(payload["fields"], row)) for row in payload["packets"]]
+    packet = _find(built, "SynonymStatement", "MONDO:1", "oboInOwl:hasExactSynonym", "CF")
+    st = packet["statement"]
+    (row,) = [r for r in rows if r["id"] == packet["id"]]
+    assert row == {
+        "id": packet["id"],
+        "claim_type": "SynonymStatement",
+        "subject": "MONDO:1",
+        "predicate": "has exact synonym",
+        "object": "CF",
+        "statement_text": st["statement_text"],
+        "review_state": "PENDING_REVIEW",
+        "score": st["score"],
+        "strength": st["strength"],
+        "line_count": 3,
+        "sources": ["infores:disease-ontology", "infores:omim", "infores:orphanet"],
+    }
+
+
+def test_export_is_compact(built, tmp_path: Path):  # noqa: F811
+    store_dir = tmp_path / "store"
+    JSONLPacketStore(store_dir).add_packets(built["merged_list"])
+    out = tmp_path / "data.json"
+    export_web_data(store_dir, out)
+    text = out.read_text()
+    assert "\n" not in text and ", " not in text.split('"packets"')[0]
+    # no per-packet keys and no evidence detail: well under 1 kB per packet here
+    assert len(text) / len(built["merged_list"]) < 1000
+
+
+def test_docs_page_reads_the_exported_shape():
+    """The browser page indexes rows by the exported field names."""
+    page = PAGE.read_text()
+    assert "data.fields" in page
+    for name in FIELDS:
+        assert f"'{name}'" in page, name
+    for stat in ("by_claim_type", "by_review_state", "by_source", "score_distribution"):
+        assert stat in page

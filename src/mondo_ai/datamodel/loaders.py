@@ -1,125 +1,48 @@
-"""Helpers for loading SIEVE data models with proper polymorphism handling.
+"""Load SIEVE profile packets.
 
-The SIEVE schema uses union types for evidence items (InformationEntity subclasses).
-Pydantic's default deserialization doesn't handle this well, so we need to
-manually dispatch to the correct subclass based on the 'type' field.
+Packets are plain dicts in the shape of the profile (as loaded from YAML or JSON).
+``packet_model`` validates one through the generated Pydantic model, which resolves the
+polymorphic evidence slots by their ``type``; it is slow (tens of milliseconds per
+packet), so use it for single packets and samples, not whole stores.
 """
 
+import json
 from pathlib import Path
 from typing import Any
 
 import yaml
-from pydantic import BaseModel
 
-from mondo_ai.datamodel.sieve_models import (
-    AgentContribution,
-    ConcordanceItem,
-    EvidencePacket,
-    SieveDataItem,
-    SieveDocument,
-    SieveStudyResult,
-    ComputationalResult,
-    TextMiningResult,
-)
+from mondo_ai.datamodel.sieve_models import EvidencePacket
 
 
-# Map type strings to classes
-EVIDENCE_ITEM_TYPES: dict[str, type[BaseModel]] = {
-    "ConcordanceItem": ConcordanceItem,
-    "AgentContribution": AgentContribution,
-    "SieveDocument": SieveDocument,
-    "SieveDataItem": SieveDataItem,
-    "SieveStudyResult": SieveStudyResult,
-    "ComputationalResult": ComputationalResult,
-    "TextMiningResult": TextMiningResult,
-    # Also handle base type names
-    "Document": SieveDocument,
-    "DataItem": SieveDataItem,
-    "StudyResult": SieveStudyResult,
-}
+def packet_model(packet: dict[str, Any]) -> EvidencePacket:
+    """Validate a packet dict against the generated Pydantic model.
 
-
-def _convert_evidence_items(data: dict[str, Any]) -> dict[str, Any]:
-    """Convert evidence items to proper typed instances.
-
-    This handles the polymorphism issue where InformationEntity subclass
-    fields are rejected when deserializing through the base class.
-
-    Args:
-        data: Raw packet data dict from YAML.
-
-    Returns:
-        Data dict with evidence items converted to proper typed objects.
+    >>> p = packet_model({
+    ...     "id": "mondoai:pkt/x", "version": "2026-11-20",
+    ...     "statement": {"id": "mondoai:st/x", "type": "SynonymStatement", "subject": "MONDO:1",
+    ...                   "predicate": {"code": "oboInOwl:hasExactSynonym"}, "object": "x"},
+    ...     "reference_snapshot": {"id": "mondoai:pkt/x#references"}})
+    >>> type(p.statement).__name__
+    'SynonymStatement'
     """
-    if "has_evidence_lines" not in data or not data["has_evidence_lines"]:
-        return data
+    return EvidencePacket.model_validate(packet)
 
-    for line in data["has_evidence_lines"]:
-        if "has_evidence_items" not in line or not line["has_evidence_items"]:
-            continue
 
-        converted_items: list[Any] = []
-        for item in line["has_evidence_items"]:
-            if isinstance(item, dict):
-                item_type = item.get("type", "")
-                item_class = EVIDENCE_ITEM_TYPES.get(item_type)
-                if item_class:
-                    # Validate through the correct subclass
-                    converted_items.append(item_class.model_validate(item))
-                else:
-                    # Keep as-is for unknown types
-                    converted_items.append(item)
-            else:
-                converted_items.append(item)
+def load_packet(path: Path | str) -> dict[str, Any]:
+    """Load one packet dict from a YAML or JSON file.
 
-        line["has_evidence_items"] = converted_items
-
+    >>> load_packet("pkt.yaml")  # doctest: +SKIP
+    """
+    path = Path(path)
+    with open(path) as f:
+        if path.suffix == ".json":
+            data: dict[str, Any] = json.load(f)
+        else:
+            data = yaml.safe_load(f)
     return data
 
 
-def packet_from_dict(data: dict[str, Any]) -> EvidencePacket:
-    """Build an EvidencePacket from a raw dict, dispatching evidence items.
-
-    Args:
-        data: Raw packet data dict (e.g. parsed from YAML/JSON).
-
-    Returns:
-        EvidencePacket instance with evidence items as their concrete subclasses.
-    """
-    return EvidencePacket.model_validate(_convert_evidence_items(dict(data)))
-
-
-def load_packet(path: Path | str) -> EvidencePacket:
-    """Load an EvidencePacket from a YAML file with proper type handling.
-
-    Args:
-        path: Path to the YAML file.
-
-    Returns:
-        EvidencePacket instance.
-
-    Example:
-        >>> from mondo_ai.datamodel.loaders import load_packet
-        >>> packet = load_packet("evidence_packets/pkt_abc123.yaml")  # doctest: +SKIP
-    """
-    with open(path) as f:
-        data = yaml.safe_load(f)
-
-    return packet_from_dict(data)
-
-
-def load_packets(path: Path | str, pattern: str = "pkt_*.yaml") -> list[EvidencePacket]:
-    """Load multiple EvidencePackets from a directory.
-
-    Args:
-        path: Path to directory containing packet files.
-        pattern: Glob pattern for packet files.
-
-    Returns:
-        List of EvidencePacket instances.
-    """
-    path = Path(path)
-    packets = []
-    for filepath in sorted(path.glob(pattern)):
-        packets.append(load_packet(filepath))
-    return packets
+def load_packets(path: Path | str, pattern: str = "*.yaml") -> list[dict[str, Any]]:
+    """Load every packet file matching ``pattern`` in a directory, sorted by name."""
+    return [load_packet(p) for p in sorted(Path(path).glob(pattern))]

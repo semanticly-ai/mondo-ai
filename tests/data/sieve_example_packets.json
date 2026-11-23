@@ -1,0 +1,563 @@
+[
+ {
+  "id": "mondoai:pkt/00011edc897e-icd10cm",
+  "type": "EvidencePacket",
+  "version": "2026-11-23",
+  "statement": {
+   "id": "mondoai:st/00011edc897e",
+   "type": "SynonymStatement",
+   "subject": "MONDO:0012960",
+   "predicate": {
+    "code": "oboInOwl:hasExactSynonym",
+    "label": "has exact synonym"
+   },
+   "object": "SYNGAP1-related intellectual disability",
+   "statement_text": "intellectual developmental disorder, autosomal dominant 5 has exact synonym 'SYNGAP1-related intellectual disability'",
+   "review_state": "PENDING_REVIEW",
+   "proposing_channel": "SOURCE_INGEST",
+   "has_evidence_lines": [
+    {
+     "id": "mondoai:el/00011edc897e-icd10cm",
+     "type": "SieveEvidenceLine",
+     "description": "ICD-10-CM carries the synonym on a record Mondo maps exactly to this term.",
+     "has_evidence_items": [
+      {
+       "id": "mondoai:pc/bd285382b76b",
+       "type": "SynonymStatement",
+       "subject": "ICD10CM:F78.A1",
+       "predicate": {
+        "code": "oboInOwl:hasExactSynonym",
+        "label": "has exact synonym"
+       },
+       "object": "SYNGAP1-related intellectual disability",
+       "resource": "infores:icd10cm",
+       "generation_context": [
+        {
+         "code": "mondo#GENERATED_FROM:LABEL",
+         "label": "synonym type"
+        }
+       ],
+       "reported_in": [
+        {
+         "id": "ICD10CM:F78.A1",
+         "type": "ExternalRecord",
+         "resource": "infores:icd10cm",
+         "label": "SYNGAP1-related intellectual disability",
+         "obsolete_in_source": false,
+         "record_metadata": {
+          "retrieved_from": "infores:icd10cm",
+          "source_release": "mondoai:release/icd10cm-2026-01-09",
+          "retrieval_date": "2026-11-23",
+          "source_label": "SYNGAP1-related intellectual disability"
+         }
+        }
+       ],
+       "resolution_chains": [
+        {
+         "id": "mondoai:rc/fed69a4ced5a",
+         "type": "ResolutionChain",
+         "entity_slot": "subject",
+         "date": "2026-11-23",
+         "specified_by": [
+          "mondoai:method/sssom-normalization"
+         ],
+         "chain_confidence": 1.0,
+         "steps": [
+          {
+           "id": "mondoai:rc/fed69a4ced5a-1",
+           "type": "AlignmentStep",
+           "category": "NORMALIZATION",
+           "method": "DETERMINISTIC_RULE",
+           "input_value": "ICD10CM:F78.A1",
+           "output_value": "MONDO:0012960",
+           "predicate": "skos:exactMatch",
+           "mapping_set": "http://purl.obolibrary.org/obo/mondo/mappings/mondo.sssom.tsv",
+           "mapping_set_version": "2026-11-03",
+           "quality_category": "normalization_curated",
+           "confidence": 1.0,
+           "confidence_basis": "DETERMINISTIC",
+           "mapping_justification": "semapv:UnspecifiedMatching"
+          }
+         ]
+        }
+       ]
+      }
+     ],
+     "direction_of_evidence_provided": "supports",
+     "score_of_evidence_provided": 0.8,
+     "computed_by_rule": "mondoai:rule/synonym-v1.0",
+     "independence_cluster": "infores:icd10cm",
+     "date_attached": "2026-11-23",
+     "last_confirmed": "2026-11-23",
+     "contributions": [
+      {
+       "id": "mondoai:el/00011edc897e-icd10cm#act",
+       "type": "InterpretationActivity",
+       "contributor": "mondoai:agent/concordance-pipeline",
+       "role": "INTERPRETER",
+       "date": "2026-11-23",
+       "method_type": "RULE_BASED_STRENGTH",
+       "specified_by": [
+        "mondoai:method/source-concordance"
+       ],
+       "read_coverage": "STRUCTURED_RECORD"
+      }
+     ],
+     "strength_of_evidence_provided": "strong",
+     "last_confirmed_against": "mondoai:release/icd10cm-2026-01-09"
+    }
+   ],
+   "score": 0.5649,
+   "strength": "moderate",
+   "direction": "supports"
+  },
+  "reference_snapshot": {
+   "id": "mondoai:pkt/00011edc897e-icd10cm#references",
+   "type": "SieveRegistry",
+   "version": "2026-11-23",
+   "resources": [
+    {
+     "id": "infores:icd10cm",
+     "type": "InformationResource",
+     "label": "ICD-10-CM",
+     "curie_prefixes": [
+      "ICD10CM"
+     ],
+     "default_role": "PRIMARY",
+     "quality_ratings": [
+      {
+       "level": 0.8,
+       "valid_from": "2026-01-01"
+      }
+     ]
+    }
+   ],
+   "releases": [
+    {
+     "id": "mondoai:release/icd10cm-2026-01-09",
+     "type": "SourceRelease",
+     "of_resource": "infores:icd10cm",
+     "version": "2026-01-09"
+    }
+   ],
+   "agents": [
+    {
+     "id": "mondoai:agent/concordance-pipeline",
+     "type": "SieveAgent",
+     "subtype": "software",
+     "name": "mondo-ai source concordance pipeline",
+     "software_version": "0.0.0"
+    }
+   ],
+   "methods": [
+    {
+     "id": "mondoai:method/source-concordance",
+     "type": "SieveMethod",
+     "label": "Source concordance: a source's own claim, normalized to Mondo ids, read as evidence",
+     "version": "2.0"
+    },
+    {
+     "id": "mondoai:method/sssom-normalization",
+     "type": "SieveMethod",
+     "label": "Normalization of source ids to Mondo ids by the skos:exactMatch rows of mondo.sssom.tsv",
+     "version": "1.0"
+    }
+   ],
+   "aggregation_rules": [
+    {
+     "id": "mondoai:rule/synonym-v1.0",
+     "type": "AggregationRule",
+     "version": "1.0",
+     "claim_type": "SynonymStatement",
+     "strength_bands": [
+      "strong >= 0.8",
+      "moderate >= 0.4",
+      "weak < 0.4"
+     ],
+     "confidence_floor": 0.3,
+     "scaling_factor": 2.0,
+     "default_quality": 0.5,
+     "stacked_lines": "CAP_AND_ADD",
+     "claim_priors": [
+      {
+       "channel": "SOURCE_INGEST",
+       "log_odds": 0.0
+      }
+     ],
+     "exclusive": true,
+     "exclusivity_rule": "An exact synonym belongs to one live term per branch; abbreviations are exempt."
+    }
+   ]
+  }
+ },
+ {
+  "id": "mondoai:pkt/0001cebe731b-ordo",
+  "type": "EvidencePacket",
+  "version": "2026-11-23",
+  "statement": {
+   "id": "mondoai:st/0001cebe731b",
+   "type": "SubclassStatement",
+   "subject": "MONDO:0018770",
+   "predicate": {
+    "code": "rdfs:subClassOf",
+    "label": "subclass of"
+   },
+   "object": "MONDO:0022410",
+   "statement_text": "Jeune syndrome subclass of retinal ciliopathy",
+   "review_state": "PENDING_REVIEW",
+   "proposing_channel": "SOURCE_INGEST",
+   "has_evidence_lines": [
+    {
+     "id": "mondoai:el/0001cebe731b-ordo",
+     "type": "SieveEvidenceLine",
+     "description": "Orphanet Rare Disease Ontology places the record under a parent; both normalize to Mondo.",
+     "has_evidence_items": [
+      {
+       "id": "mondoai:pc/4b4589abb967",
+       "type": "SubclassStatement",
+       "subject": "Orphanet:474",
+       "predicate": {
+        "code": "rdfs:subClassOf",
+        "label": "subclass of"
+       },
+       "object": "Orphanet:156165",
+       "resource": "infores:orphanet",
+       "generation_context": [
+        {
+         "code": "BFO:0000050",
+         "label": "part_of classification parent"
+        }
+       ],
+       "reported_in": [
+        {
+         "id": "Orphanet:474",
+         "type": "ExternalRecord",
+         "resource": "infores:orphanet",
+         "label": "Jeune syndrome",
+         "obsolete_in_source": false,
+         "record_metadata": {
+          "retrieved_from": "infores:orphanet",
+          "source_release": "mondoai:release/ordo-4.9",
+          "retrieval_date": "2026-11-23",
+          "source_label": "Jeune syndrome"
+         }
+        }
+       ],
+       "resolution_chains": [
+        {
+         "id": "mondoai:rc/511fa213ffde",
+         "type": "ResolutionChain",
+         "entity_slot": "subject",
+         "date": "2026-11-23",
+         "specified_by": [
+          "mondoai:method/sssom-normalization"
+         ],
+         "chain_confidence": 1.0,
+         "steps": [
+          {
+           "id": "mondoai:rc/511fa213ffde-1",
+           "type": "AlignmentStep",
+           "category": "NORMALIZATION",
+           "method": "DETERMINISTIC_RULE",
+           "input_value": "Orphanet:474",
+           "output_value": "MONDO:0018770",
+           "predicate": "skos:exactMatch",
+           "mapping_set": "http://purl.obolibrary.org/obo/mondo/mappings/mondo.sssom.tsv",
+           "mapping_set_version": "2026-11-03",
+           "quality_category": "normalization_curated",
+           "confidence": 1.0,
+           "confidence_basis": "DETERMINISTIC",
+           "mapping_justification": "semapv:UnspecifiedMatching"
+          }
+         ]
+        },
+        {
+         "id": "mondoai:rc/0463dea5a646",
+         "type": "ResolutionChain",
+         "entity_slot": "object",
+         "date": "2026-11-23",
+         "specified_by": [
+          "mondoai:method/sssom-normalization"
+         ],
+         "chain_confidence": 1.0,
+         "steps": [
+          {
+           "id": "mondoai:rc/0463dea5a646-1",
+           "type": "AlignmentStep",
+           "category": "NORMALIZATION",
+           "method": "DETERMINISTIC_RULE",
+           "input_value": "Orphanet:156165",
+           "output_value": "MONDO:0022410",
+           "predicate": "skos:exactMatch",
+           "mapping_set": "http://purl.obolibrary.org/obo/mondo/mappings/mondo.sssom.tsv",
+           "mapping_set_version": "2026-11-03",
+           "quality_category": "normalization_curated",
+           "confidence": 1.0,
+           "confidence_basis": "DETERMINISTIC",
+           "mapping_justification": "semapv:UnspecifiedMatching"
+          }
+         ]
+        }
+       ]
+      }
+     ],
+     "direction_of_evidence_provided": "supports",
+     "score_of_evidence_provided": 0.85,
+     "computed_by_rule": "mondoai:rule/subclass-v1.0",
+     "independence_cluster": "infores:orphanet",
+     "date_attached": "2026-11-23",
+     "last_confirmed": "2026-11-23",
+     "contributions": [
+      {
+       "id": "mondoai:el/0001cebe731b-ordo#act",
+       "type": "InterpretationActivity",
+       "contributor": "mondoai:agent/concordance-pipeline",
+       "role": "INTERPRETER",
+       "date": "2026-11-23",
+       "method_type": "RULE_BASED_STRENGTH",
+       "specified_by": [
+        "mondoai:method/source-concordance"
+       ],
+       "read_coverage": "STRUCTURED_RECORD"
+      }
+     ],
+     "strength_of_evidence_provided": "strong",
+     "last_confirmed_against": "mondoai:release/ordo-4.9"
+    }
+   ],
+   "score": 0.644,
+   "strength": "moderate",
+   "direction": "supports"
+  },
+  "reference_snapshot": {
+   "id": "mondoai:pkt/0001cebe731b-ordo#references",
+   "type": "SieveRegistry",
+   "version": "2026-11-23",
+   "resources": [
+    {
+     "id": "infores:orphanet",
+     "type": "InformationResource",
+     "label": "Orphanet Rare Disease Ontology",
+     "curie_prefixes": [
+      "Orphanet"
+     ],
+     "default_role": "PRIMARY",
+     "quality_ratings": [
+      {
+       "level": 0.9,
+       "valid_from": "2026-01-01"
+      }
+     ]
+    }
+   ],
+   "releases": [
+    {
+     "id": "mondoai:release/ordo-4.9",
+     "type": "SourceRelease",
+     "of_resource": "infores:orphanet",
+     "version": "4.9"
+    }
+   ],
+   "agents": [
+    {
+     "id": "mondoai:agent/concordance-pipeline",
+     "type": "SieveAgent",
+     "subtype": "software",
+     "name": "mondo-ai source concordance pipeline",
+     "software_version": "0.0.0"
+    }
+   ],
+   "methods": [
+    {
+     "id": "mondoai:method/source-concordance",
+     "type": "SieveMethod",
+     "label": "Source concordance: a source's own claim, normalized to Mondo ids, read as evidence",
+     "version": "2.0"
+    },
+    {
+     "id": "mondoai:method/sssom-normalization",
+     "type": "SieveMethod",
+     "label": "Normalization of source ids to Mondo ids by the skos:exactMatch rows of mondo.sssom.tsv",
+     "version": "1.0"
+    }
+   ],
+   "aggregation_rules": [
+    {
+     "id": "mondoai:rule/subclass-v1.0",
+     "type": "AggregationRule",
+     "version": "1.0",
+     "claim_type": "SubclassStatement",
+     "strength_bands": [
+      "strong >= 0.8",
+      "moderate >= 0.4",
+      "weak < 0.4"
+     ],
+     "confidence_floor": 0.3,
+     "scaling_factor": 2.0,
+     "default_quality": 0.5,
+     "stacked_lines": "CAP_AND_ADD",
+     "claim_priors": [
+      {
+       "channel": "SOURCE_INGEST",
+       "log_odds": 0.0
+      }
+     ]
+    }
+   ]
+  }
+ },
+ {
+  "id": "mondoai:pkt/0000a4f78ee0-omim",
+  "type": "EvidencePacket",
+  "version": "2026-11-23",
+  "statement": {
+   "id": "mondoai:st/0000a4f78ee0",
+   "type": "MappingStatement",
+   "subject": "MONDO:0008482",
+   "predicate": {
+    "code": "skos:exactMatch",
+    "label": "exact match"
+   },
+   "object": "OMIM:184400",
+   "statement_text": "Sprengel deformity exact match OMIM:184400 (sprengel deformity)",
+   "review_state": "NOT_VERIFIED",
+   "proposing_channel": "SOURCE_INGEST",
+   "has_evidence_lines": [
+    {
+     "id": "mondoai:el/0000a4f78ee0-lexical",
+     "type": "SieveEvidenceLine",
+     "description": "The Mondo term and the OMIM record share a name (label_label).",
+     "has_evidence_items": [
+      {
+       "id": "OMIM:184400",
+       "type": "ExternalRecord",
+       "resource": "infores:omim",
+       "label": "sprengel deformity",
+       "obsolete_in_source": false,
+       "record_metadata": {
+        "retrieved_from": "infores:omim",
+        "source_release": "mondoai:release/omim-2026-11-18",
+        "retrieval_date": "2026-11-23",
+        "source_label": "sprengel deformity"
+       }
+      },
+      {
+       "id": "mondoai:cs/f368bd413300",
+       "type": "ComputationalScore",
+       "value": "1.0",
+       "specified_by": [
+        "mondoai:method/lexical-match"
+       ],
+       "software_version": "0.0.0",
+       "parameters": "subject=MONDO:0008482;object=OMIM:184400;match=label_label;normalize=casefold,punctuation"
+      }
+     ],
+     "direction_of_evidence_provided": "supports",
+     "score_of_evidence_provided": 0.6,
+     "computed_by_rule": "mondoai:rule/mapping-v1.0",
+     "independence_cluster": "mondoai:lexical",
+     "date_attached": "2026-11-23",
+     "last_confirmed": "2026-11-23",
+     "contributions": [
+      {
+       "id": "mondoai:el/0000a4f78ee0-lexical#act",
+       "type": "InterpretationActivity",
+       "contributor": "mondoai:agent/concordance-pipeline",
+       "role": "INTERPRETER",
+       "date": "2026-11-23",
+       "method_type": "RULE_BASED_STRENGTH",
+       "specified_by": [
+        "mondoai:method/source-concordance"
+       ],
+       "read_coverage": "STRUCTURED_RECORD"
+      }
+     ],
+     "strength_of_evidence_provided": "moderate",
+     "last_confirmed_against": "mondoai:release/omim-2026-11-18"
+    }
+   ],
+   "score": 0.493,
+   "strength": "moderate",
+   "direction": "supports"
+  },
+  "reference_snapshot": {
+   "id": "mondoai:pkt/0000a4f78ee0-omim#references",
+   "type": "SieveRegistry",
+   "version": "2026-11-23",
+   "resources": [
+    {
+     "id": "infores:omim",
+     "type": "InformationResource",
+     "label": "OMIM",
+     "curie_prefixes": [
+      "OMIM",
+      "OMIMPS"
+     ],
+     "default_role": "PRIMARY",
+     "quality_ratings": [
+      {
+       "level": 0.9,
+       "valid_from": "2026-01-01"
+      }
+     ]
+    }
+   ],
+   "releases": [
+    {
+     "id": "mondoai:release/omim-2026-11-18",
+     "type": "SourceRelease",
+     "of_resource": "infores:omim",
+     "version": "2026-11-18"
+    }
+   ],
+   "agents": [
+    {
+     "id": "mondoai:agent/concordance-pipeline",
+     "type": "SieveAgent",
+     "subtype": "software",
+     "name": "mondo-ai source concordance pipeline",
+     "software_version": "0.0.0"
+    }
+   ],
+   "methods": [
+    {
+     "id": "mondoai:method/source-concordance",
+     "type": "SieveMethod",
+     "label": "Source concordance: a source's own claim, normalized to Mondo ids, read as evidence",
+     "version": "2.0"
+    },
+    {
+     "id": "mondoai:method/lexical-match",
+     "type": "SieveMethod",
+     "label": "Case- and punctuation-insensitive match of Mondo and source labels and exact synonyms",
+     "version": "1.0"
+    }
+   ],
+   "aggregation_rules": [
+    {
+     "id": "mondoai:rule/mapping-v1.0",
+     "type": "AggregationRule",
+     "version": "1.0",
+     "claim_type": "MappingStatement",
+     "strength_bands": [
+      "strong >= 0.8",
+      "moderate >= 0.4",
+      "weak < 0.4"
+     ],
+     "confidence_floor": 0.3,
+     "scaling_factor": 2.0,
+     "default_quality": 0.5,
+     "stacked_lines": "CAP_AND_ADD",
+     "claim_priors": [
+      {
+       "channel": "SOURCE_INGEST",
+       "log_odds": 0.0
+      }
+     ],
+     "exclusive": true,
+     "exclusivity_rule": "An exact match is 1:1 into a source unless marked as one of several preferred siblings."
+    }
+   ]
+  }
+ }
+]

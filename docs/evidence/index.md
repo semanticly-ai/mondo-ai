@@ -1,12 +1,14 @@
 # Evidence Browser
 
-A browsable view of the current evidence-packet demo store. Each packet is a
-candidate Mondo assertion (e.g. an exact synonym) with typed, scored evidence
-from OMIM, Orphanet (ORDO), and the Disease Ontology (DOID).
+A browsable view of the merged evidence-packet store. Each packet holds one claim
+about a Mondo term (a synonym, a subclass axiom or a mapping) with its evidence lines
+from the sources Mondo integrates, scored by the SIEVE inclusion score S in [-1, 1].
+Click a row for the statement's details.
 
-!!! note "Demo data"
-    This is a bounded sample regenerated on every docs deploy. It is **not** the
-    complete set of exact synonyms — see the counts below for what is included.
+!!! note "Regenerated on deploy"
+    The data is exported from the committed store on every docs deploy. Evidence
+    lines themselves are not shown here; run the web app (`just serve-web`) for the
+    full packet view.
 
 <div id="eb-app" data-src="data.json">
   <p id="eb-loading">Loading evidence packets…</p>
@@ -32,6 +34,7 @@ from OMIM, Orphanet (ORDO), and the Disease Ontology (DOID).
 .eb-src{display:inline-block;font-size:.7rem;border:1px solid var(--md-default-fg-color--lightest);border-radius:.25rem;padding:0 .35rem;margin-right:.2rem}
 .eb-detail td{background:var(--md-code-bg-color)}
 .eb-ev{font-size:.8rem;margin:.15rem 0}
+.eb-band{font-size:.72rem;color:var(--md-default-fg-color--light)}
 .eb-pager{display:flex;gap:.5rem;align-items:center;margin:.75rem 0}
 .eb-pager button{padding:.3rem .7rem;border:1px solid var(--md-default-fg-color--lightest);border-radius:.3rem;background:var(--md-default-bg-color);color:var(--md-default-fg-color);cursor:pointer}
 .eb-pager button:disabled{opacity:.4;cursor:default}
@@ -51,31 +54,42 @@ from OMIM, Orphanet (ORDO), and the Disease Ontology (DOID).
   function card(n,l){return '<div class="eb-card"><div class="eb-num">'+n.toLocaleString()+'</div><div class="eb-lbl">'+l+'</div></div>';}
   function bars(obj){return Object.keys(obj||{}).sort(function(a,b){return obj[b]-obj[a];})
       .map(function(k){return '<span class="eb-chip">'+esc(k)+': <strong>'+obj[k].toLocaleString()+'</strong></span>';}).join('');}
+  function opts(label,obj){return '<option value="">'+label+'</option>'+Object.keys(obj||{}).sort()
+      .map(function(x){return '<option>'+esc(x)+'</option>';}).join('');}
+  function bar(label,obj){return '<div class="eb-bars"><strong style="font-size:.8rem;align-self:center">'+label+':</strong> '+bars(obj)+'</div>';}
+
+  // data.json is {stats, fields, packets}: one array per packet, zipped with data.fields
+  function rows(data){
+    var f=data.fields||[];
+    return (data.packets||[]).map(function(r){var o={};for(var i=0;i<f.length;i++)o[f[i]]=r[i];return o;});
+  }
 
   function render(data){
-    all=data.packets||[]; var s=data.stats||{};
-    var sources=Object.keys(s.by_source||{}).sort();
-    var preds=Object.keys(s.by_predicate||{}).sort();
+    all=rows(data); var s=data.stats||{};
+    var sources=Object.keys(s.by_source||{});
     app.innerHTML=
       '<div id="eb-cards">'+card(s.total_packets||all.length,'Packets')+
         card(s.total_evidence_lines||0,'Evidence lines')+
         card(s.unique_subjects||0,'Mondo subjects')+
         card(sources.length,'Sources')+'</div>'+
-      '<div class="eb-bars"><strong style="font-size:.8rem;align-self:center">By source:</strong> '+bars(s.by_source)+'</div>'+
-      '<div class="eb-bars"><strong style="font-size:.8rem;align-self:center">By predicate:</strong> '+bars(s.by_predicate)+'</div>'+
+      bar('By claim type',s.by_claim_type)+
+      bar('By review state',s.by_review_state)+
+      bar('Inclusion score',s.score_distribution)+
+      bar('Evidence lines by source',s.by_source)+
       '<div class="eb-controls">'+
-        '<input type="search" id="eb-q" placeholder="Search subject, object, ID…">'+
-        '<select id="eb-source"><option value="">All sources</option>'+sources.map(function(x){return '<option>'+esc(x)+'</option>';}).join('')+'</select>'+
-        '<select id="eb-pred"><option value="">All predicates</option>'+preds.map(function(x){return '<option>'+esc(x)+'</option>';}).join('')+'</select>'+
+        '<input type="search" id="eb-q" placeholder="Search statement, subject, object, ID…">'+
+        '<select id="eb-type">'+opts('All claim types',s.by_claim_type)+'</select>'+
+        '<select id="eb-state">'+opts('All review states',s.by_review_state)+'</select>'+
+        '<select id="eb-source">'+opts('All sources',s.by_source)+'</select>'+
+        '<input type="number" id="eb-min" step="0.1" min="-1" max="1" placeholder="min S" style="width:6rem">'+
         '<span id="eb-count"></span></div>'+
       '<div style="overflow-x:auto"><table id="eb-table"><thead><tr>'+
-        '<th>Subject</th><th>Predicate</th><th>Object</th><th>Sources</th><th>Score</th></tr></thead>'+
+        '<th>Statement</th><th>Claim type</th><th>S</th><th>Lines</th><th>Sources</th><th>Review state</th></tr></thead>'+
         '<tbody id="eb-body"></tbody></table></div>'+
       '<div class="eb-pager"><button id="eb-prev">&laquo; Prev</button>'+
         '<span id="eb-page"></span><button id="eb-next">Next &raquo;</button></div>';
-    document.getElementById('eb-q').addEventListener('input',apply);
-    document.getElementById('eb-source').addEventListener('change',apply);
-    document.getElementById('eb-pred').addEventListener('change',apply);
+    ['eb-q','eb-min'].forEach(function(id){document.getElementById(id).addEventListener('input',apply);});
+    ['eb-type','eb-state','eb-source'].forEach(function(id){document.getElementById(id).addEventListener('change',apply);});
     document.getElementById('eb-prev').addEventListener('click',function(){if(page>0){page--;draw();}});
     document.getElementById('eb-next').addEventListener('click',function(){if((page+1)*PAGE<filtered.length){page++;draw();}});
     apply();
@@ -83,13 +97,17 @@ from OMIM, Orphanet (ORDO), and the Disease Ontology (DOID).
 
   function apply(){
     var q=(document.getElementById('eb-q').value||'').toLowerCase();
+    var type=document.getElementById('eb-type').value;
+    var state=document.getElementById('eb-state').value;
     var src=document.getElementById('eb-source').value;
-    var pred=document.getElementById('eb-pred').value;
+    var minv=document.getElementById('eb-min').value, min=minv===''?null:Number(minv);
     filtered=all.filter(function(p){
-      if(src && (p.sources||[]).indexOf(src)<0) return false;
-      if(pred && p.predicate!==pred) return false;
+      if(type && p['claim_type']!==type) return false;
+      if(state && p['review_state']!==state) return false;
+      if(src && (p['sources']||[]).indexOf(src)<0) return false;
+      if(min!==null && (p['score']==null || p['score']<min)) return false;
       if(q){
-        var hay=((p.subject||'')+' '+(p.subject_label||'')+' '+(p.object||'')+' '+(p.object_label||'')+' '+p.id).toLowerCase();
+        var hay=((p['statement_text']||'')+' '+(p['subject']||'')+' '+(p['object']||'')+' '+p['id']).toLowerCase();
         if(hay.indexOf(q)<0) return false;
       }
       return true;
@@ -99,22 +117,21 @@ from OMIM, Orphanet (ORDO), and the Disease Ontology (DOID).
 
   function draw(){
     var body=document.getElementById('eb-body'); body.innerHTML='';
-    var start=page*PAGE, rows=filtered.slice(start,start+PAGE);
-    rows.forEach(function(p){
+    var start=page*PAGE, slice=filtered.slice(start,start+PAGE);
+    slice.forEach(function(p){
       var tr=document.createElement('tr'); tr.className='eb-row';
-      tr.innerHTML='<td>'+esc(p.subject_label||'')+' <span class="eb-mono">'+esc(p.subject||'')+'</span></td>'+
-        '<td>'+esc(p.predicate||'')+'</td>'+
-        '<td>'+esc(p.object_label||p.object||'')+'</td>'+
-        '<td>'+(p.sources||[]).map(function(x){return '<span class="eb-src">'+esc(x)+'</span>';}).join('')+'</td>'+
-        '<td>'+(p.score==null?'':Number(p.score).toFixed(3))+'</td>';
+      tr.innerHTML='<td>'+esc(p['statement_text']||(p['subject']+' '+p['predicate']+' '+p['object']))+'</td>'+
+        '<td>'+esc(p['claim_type'])+'</td>'+
+        '<td>'+(p['score']==null?'':Number(p['score']).toFixed(3))+(p['strength']?' <span class="eb-band">'+esc(p['strength'])+'</span>':'')+'</td>'+
+        '<td>'+esc(p['line_count'])+'</td>'+
+        '<td>'+(p['sources']||[]).map(function(x){return '<span class="eb-src">'+esc(x)+'</span>';}).join('')+'</td>'+
+        '<td>'+esc(p['review_state'])+'</td>';
       var det=document.createElement('tr'); det.className='eb-detail'; det.style.display='none';
-      det.innerHTML='<td colspan="5">'+p.evidence.map(function(e){
-        return '<div class="eb-ev"><span class="eb-src">'+esc(e.source||'?')+'</span> '+
-          esc(e.direction||'')+(e.strength?' · '+esc(e.strength):'')+
-          (e.score==null?'':' · score '+Number(e.score).toFixed(3))+
-          (e.source_subject?' · <span class="eb-mono">'+esc(e.source_subject)+'</span>':'')+
-          (e.justification?' · '+esc(e.justification):'')+'</div>';
-      }).join('')+'<div class="eb-mono" style="margin-top:.3rem">'+esc(p.id)+'</div></td>';
+      det.innerHTML='<td colspan="6">'+
+        '<div class="eb-ev">Subject <span class="eb-mono">'+esc(p['subject'])+'</span></div>'+
+        '<div class="eb-ev">Predicate '+esc(p['predicate'])+'</div>'+
+        '<div class="eb-ev">Object <span class="eb-mono">'+esc(p['object'])+'</span></div>'+
+        '<div class="eb-mono" style="margin-top:.3rem">'+esc(p['id'])+'</div></td>';
       tr.addEventListener('click',function(){det.style.display=det.style.display==='none'?'':'none';});
       body.appendChild(tr); body.appendChild(det);
     });

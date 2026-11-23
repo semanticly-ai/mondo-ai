@@ -65,10 +65,13 @@
             font-size: 0.75rem; font-weight: 600;
         }
         .badge-source { background: #e7f5ff; color: #1971c2; }
-        .badge-status-UNREVIEWED { background: #fff3bf; color: #e67700; }
-        .badge-status-ACCEPTED { background: #d3f9d8; color: #2b8a3e; }
-        .badge-status-REJECTED { background: #ffe3e3; color: #c92a2a; }
-        .badge-status-CONTROVERSIAL { background: #f3d9fa; color: #862e9c; }
+        .badge-state-PENDING_REVIEW { background: #fff3bf; color: #e67700; }
+        .badge-state-NOT_VERIFIED { background: #e7f5ff; color: #1971c2; }
+        .badge-state-VERIFIED { background: #d3f9d8; color: #2b8a3e; }
+        .badge-state-REJECTED { background: #ffe3e3; color: #c92a2a; }
+        .badge-strength-strong { background: #2b8a3e; color: #fff; }
+        .badge-strength-moderate { background: #94d82d; color: #2b3a00; }
+        .badge-strength-weak { background: #e9ecef; color: #495057; }
         .badge-direction-supports { background: #d3f9d8; color: #2b8a3e; }
         .badge-direction-disputes { background: #ffe3e3; color: #c92a2a; }
         .badge-direction-neutral { background: #e9ecef; color: #495057; }
@@ -125,10 +128,15 @@
             border-left: 3px solid var(--primary); padding: 0.75rem 1rem;
             margin-bottom: 0.75rem; background: #f8f9fa; border-radius: 0 4px 4px 0;
         }
-        .evidence-item.concordance { border-left-color: var(--info); }
-        .evidence-item.document { border-left-color: var(--success); }
-        .evidence-item.agent { border-left-color: var(--warning); }
-        .evidence-item.computational { border-left-color: #845ef7; }
+        .evidence-item.claim { border-left-color: var(--info); }
+        .evidence-item.publication { border-left-color: var(--success); }
+        .evidence-item.line { border-left-color: var(--warning); }
+        .evidence-item.score { border-left-color: #845ef7; }
+        .mono { font-family: var(--mono); font-size: 0.85rem; }
+        .evidence-line { margin-bottom: 1.5rem; padding-bottom: 1rem; border-bottom: 1px solid var(--border); }
+        .evidence-line:target { background: #fff9db; }
+        .rationale { margin: 0.5rem 0; padding: 0.6rem 0.8rem; background: #f8f9fa; border-radius: 4px; font-size: 0.9rem; }
+        details > summary { cursor: pointer; font-weight: 600; color: var(--text-muted); }
 
         /* Distribution bars */
         .dist-table td.bar-cell { width: 50%; }

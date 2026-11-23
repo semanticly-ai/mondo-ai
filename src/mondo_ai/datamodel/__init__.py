@@ -1,147 +1,94 @@
-"""MondoAI Data Model (SIEVE/SEPIO-based).
+"""MondoAI data model.
 
-This module contains the LinkML-generated Pydantic models for the MondoAI pipeline,
-based on the SIEVE evidence framework which extends SEPIO.
+Evidence packets follow the SIEVE profile of the SEPIO core (``schema/sieve.yaml`` and
+``schema/sepio_core.yaml``, vendored verbatim from the sieve repository). The pipeline
+handles packets as plain JSON dicts, the shape sieve's own ``profile_checks`` and
+``inclusion_score`` read; the generated Pydantic classes below are for typed access to
+single objects and for validating samples (``loaders.packet_model``).
+
+The mondo-ai overlay (``schema/mondo_ai_sieve.yaml``) adds the classes that hold a
+source ontology locally before it becomes evidence: ResourceSnapshot, EntitySnapshot,
+Synonym and EntityMapping.
 """
 
-# Primary SIEVE/SEPIO models
 from mondo_ai.datamodel.sieve_models import (
-    # Core SIEVE classes
+    # Profile classes
     EvidencePacket,
+    EvidencePacketCollection,
+    SieveRegistry,
     SieveStatement,
+    SynonymStatement,
+    SubclassStatement,
+    MappingStatement,
     SieveEvidenceLine,
-    EvidenceSynthesis,
-    Score,
-    CurationActivity,
-    # Evidence item types
-    SieveEvidenceItem,
-    ConcordanceItem,
-    SieveDocument,
-    SieveDataItem,
-    SieveStudyResult,
-    ComputationalResult,
-    AgentContribution,
-    TextMiningResult,
-    # SEPIO base classes
-    Entity,
-    InformationEntity,
-    Statement,
-    EvidenceLine,
-    Document,
-    DataItem,
-    DataSet,
-    StudyResult,
-    Activity,
-    Contribution,
-    Agent,
-    Proposition,
-    StudyGroup,
-    # Utility classes
+    InterpretationActivity,
+    ExternalRecord,
+    ComputationalScore,
+    Publication,
+    InformationResource,
+    SourceRelease,
+    SieveAgent,
+    SieveMethod,
+    AggregationRule,
+    ResolutionChain,
+    AlignmentStep,
+    RetrievalMetadata,
     Coding,
-    Qualifier,
-    Expression,
-    Extension,
-    RecordMetadata,
-    Characteristic,
-    # Enums from SIEVE
-    CurationStatus,
-    EvidenceDirection,
-    EvidenceStrength,
-    EvidenceItemType,
-    TrustLevel,
-    ContributionChannel,
-    ContributionType,
-)
-
-# Mondo-AI specific models (extraction and pipeline)
-from mondo_ai.datamodel.sieve_models import (
+    # Profile enums
+    ClaimType,
+    Direction,
+    ReviewState,
+    InterpretationMethod,
+    ProposingChannel,
+    ReadCoverage,
+    # Mondo-AI extraction models
     ResourceSnapshot,
     EntitySnapshot,
     Synonym,
     EntityMapping,
-)
-
-# Mondo-AI specific enums
-from mondo_ai.datamodel.sieve_models import (
-    StatementPredicate,
-    RecommendedAction,
     SynonymScope,
 )
 
-# Mapping utilities
-from mondo_ai.datamodel.mappings import (
-    predicate_to_coding,
-    coding_to_predicate,
-    direction_to_sieve,
-    sieve_to_direction,
-)
-
-# Loader utilities (handle polymorphism)
 from mondo_ai.datamodel.loaders import (
     load_packet,
     load_packets,
+    packet_model,
 )
 
 __all__ = [
-    # Core SIEVE classes
     "EvidencePacket",
+    "EvidencePacketCollection",
+    "SieveRegistry",
     "SieveStatement",
+    "SynonymStatement",
+    "SubclassStatement",
+    "MappingStatement",
     "SieveEvidenceLine",
-    "EvidenceSynthesis",
-    "Score",
-    "CurationActivity",
-    # Evidence item types
-    "SieveEvidenceItem",
-    "ConcordanceItem",
-    "SieveDocument",
-    "SieveDataItem",
-    "SieveStudyResult",
-    "ComputationalResult",
-    "AgentContribution",
-    "TextMiningResult",
-    # SEPIO base classes
-    "Entity",
-    "InformationEntity",
-    "Statement",
-    "EvidenceLine",
-    "Document",
-    "DataItem",
-    "DataSet",
-    "StudyResult",
-    "Activity",
-    "Contribution",
-    "Agent",
-    "Proposition",
-    "StudyGroup",
-    # Utility classes
+    "InterpretationActivity",
+    "ExternalRecord",
+    "ComputationalScore",
+    "Publication",
+    "InformationResource",
+    "SourceRelease",
+    "SieveAgent",
+    "SieveMethod",
+    "AggregationRule",
+    "ResolutionChain",
+    "AlignmentStep",
+    "RetrievalMetadata",
     "Coding",
-    "Qualifier",
-    "Expression",
-    "Extension",
-    "RecordMetadata",
-    "Characteristic",
-    # Enums
-    "CurationStatus",
-    "EvidenceDirection",
-    "EvidenceStrength",
-    "EvidenceItemType",
-    "TrustLevel",
-    "ContributionChannel",
-    "ContributionType",
-    "StatementPredicate",
-    "RecommendedAction",
-    "SynonymScope",
-    # Mondo-AI specific models
+    "ClaimType",
+    "Direction",
+    "ReviewState",
+    "InterpretationMethod",
+    "ProposingChannel",
+    "ReadCoverage",
     "ResourceSnapshot",
     "EntitySnapshot",
     "Synonym",
     "EntityMapping",
-    # Mapping utilities
-    "predicate_to_coding",
-    "coding_to_predicate",
-    "direction_to_sieve",
-    "sieve_to_direction",
-    # Loader utilities
+    "SynonymScope",
     "load_packet",
     "load_packets",
+    "packet_model",
 ]

@@ -1,240 +1,429 @@
-"""FastAPI web application for browsing evidence packets.
+"""FastAPI web application for browsing SIEVE profile evidence packets.
 
-Provides a dashboard with statistics and a browsable list of evidence packets
-with filtering by source, predicate, and status.
+Reads packet dicts from a :class:`~mondo_ai.storage.jsonl_store.JSONLPacketStore`
+(default ``packet_store_merged``) and serves a dashboard, a filterable packet list and a
+packet detail page.
+
+Packet ids contain ``:`` and ``/`` (``mondoai:pkt/abc123``), so pages route by the part
+after ``mondoai:pkt/``: ``/packets/abc123``. A URL-encoded full id
+(``/packets/mondoai%3Apkt%2Fabc123``) resolves too.
 
 Run with: just serve-web
 """
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterable, Iterator
+from urllib.parse import quote, urlencode
 
 from fastapi import FastAPI, Query, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
-from mondo_ai.stats import compute_stats, PacketStats
+from mondo_ai.stats import PacketStats, compute_stats
+from mondo_ai.storage.index import summarize_packet
 from mondo_ai.storage.jsonl_store import JSONLPacketStore
 
-# ---------------------------------------------------------------------------
-# App setup
-# ---------------------------------------------------------------------------
-
 STORE_DIR = Path("packet_store_merged")
+PACKET_PREFIX = "mondoai:pkt/"
+PUBMED_URL = "https://pubmed.ncbi.nlm.nih.gov/{}/"
 
-app = FastAPI(title="MondoAI Evidence Packet Browser")
 templates = Jinja2Templates(directory=Path(__file__).parent / "templates")
 
-# Lazy-loaded singletons
-_store: JSONLPacketStore | None = None
-_stats: PacketStats | None = None
-_index_cache: dict[str, Any] | None = None
+
+# ---------------------------------------------------------------------------
+# Packet ids and routes
+# ---------------------------------------------------------------------------
 
 
-def _get_store() -> JSONLPacketStore:
-    """Get or create the packet store singleton."""
-    global _store
-    if _store is None:
-        _store = JSONLPacketStore(STORE_DIR)
-    return _store
+def packet_path(pid: str) -> str:
+    """The detail page path of a packet id.
+
+    >>> packet_path("mondoai:pkt/00011edc897e-icd10cm")
+    '/packets/00011edc897e-icd10cm'
+    >>> packet_path("x:y/z")
+    '/packets/x%3Ay%2Fz'
+    """
+    if pid.startswith(PACKET_PREFIX):
+        return "/packets/" + quote(pid[len(PACKET_PREFIX) :], safe="")
+    return "/packets/" + quote(pid, safe="")
 
 
-def _get_stats() -> PacketStats:
-    """Get or compute cached statistics."""
-    global _stats
-    if _stats is None:
-        store = _get_store()
-        _stats = compute_stats(store.iter_packets())
-    return _stats
+def packet_id_from_key(key: str) -> str:
+    """The packet id a ``/packets/{key}`` path names: a full id, or the part after the prefix.
+
+    >>> packet_id_from_key("abc123"), packet_id_from_key("mondoai:pkt/abc123")
+    ('mondoai:pkt/abc123', 'mondoai:pkt/abc123')
+    """
+    return key if ":" in key else PACKET_PREFIX + key
 
 
-def _get_index() -> dict[str, Any]:
-    """Load the raw index for fast listing/filtering."""
-    global _index_cache
-    if _index_cache is None:
-        index_path = STORE_DIR / "index.json"
-        with open(index_path) as f:
-            _index_cache = json.load(f)
-    return _index_cache
+def line_anchor(line_id: str) -> str:
+    """An HTML id for an evidence line: the last path segment of its id.
+
+    >>> line_anchor("mondoai:el/00011edc897e-icd10cm")
+    'line-00011edc897e-icd10cm'
+    """
+    return "line-" + line_id.rsplit("/", 1)[-1].replace("#", "-")
 
 
-def _packet_summary(packet: Any) -> dict[str, Any]:
-    """Extract a summary dict from an EvidencePacket for list display."""
-    stmt = packet.statement
-    predicate_label = ""
-    if stmt and stmt.predicate:
-        predicate_label = stmt.predicate.label or stmt.predicate.code or ""
+def pubmed_url(curie: str) -> str | None:
+    """The PubMed page of a ``PMID:`` CURIE, else None.
 
-    # Collect source IDs from evidence items
-    sources: list[str] = []
-    n_evidence = 0
-    for el in packet.has_evidence_lines or []:
-        n_evidence += 1
-        for item in el.has_evidence_items or []:
-            src = getattr(item, "source_id", None)
-            if src and src not in sources:
-                sources.append(src)
+    >>> pubmed_url("PMID:123"), pubmed_url("DOI:1")
+    ('https://pubmed.ncbi.nlm.nih.gov/123/', None)
+    """
+    if curie.startswith("PMID:"):
+        return PUBMED_URL.format(curie.split(":", 1)[1])
+    return None
 
-    score = None
-    direction = None
-    if packet.evidence_synthesis:
-        if packet.evidence_synthesis.score:
-            score = packet.evidence_synthesis.score.value
-        direction = packet.evidence_synthesis.direction
 
-    # Get score from first evidence line as fallback
-    if score is None and packet.has_evidence_lines:
-        first_line = (packet.has_evidence_lines or [None])[0]
-        if first_line and first_line.score_of_evidence_provided is not None:
-            score = first_line.score_of_evidence_provided
+# ---------------------------------------------------------------------------
+# View models: plain dicts the templates render
+# ---------------------------------------------------------------------------
 
+
+def _publication_view(item: dict[str, Any]) -> dict[str, Any]:
+    """A Publication as id, PubMed link and title."""
+    return {"kind": "publication", "id": item["id"], "url": pubmed_url(item["id"]), "label": item.get("label")}
+
+
+def _record_view(item: dict[str, Any]) -> dict[str, Any]:
+    """An ExternalRecord as id, label, resource, release and obsolescence."""
+    meta = item.get("record_metadata") or {}
     return {
-        "id": packet.id,
-        "subject": stmt.subject if stmt else "",
-        "subject_label": stmt.subject_label if stmt else "",
-        "predicate": predicate_label,
-        "object": stmt.object if stmt else "",
-        "object_label": stmt.object_label if stmt else "",
-        "status": str(packet.status) if packet.status else "UNREVIEWED",
-        "sources": sources,
-        "n_evidence": n_evidence,
-        "score": score,
-        "direction": direction,
+        "kind": "record",
+        "id": item["id"],
+        "label": item.get("label") or meta.get("source_label"),
+        "resource": item.get("resource"),
+        "release": meta.get("source_release"),
+        "obsolete": bool(item.get("obsolete_in_source")),
     }
 
 
-# ---------------------------------------------------------------------------
-# Routes
-# ---------------------------------------------------------------------------
+def _item_view(item: dict[str, Any]) -> dict[str, Any]:
+    """One evidence item as a template-ready dict, by its kind.
+
+    >>> _item_view({"id": "mondoai:cs/1", "type": "ComputationalScore", "value": "1.0",
+    ...             "parameters": "match=label_label", "specified_by": ["m"]})["kind"]
+    'score'
+    >>> _item_view({"id": "mondoai:el/x-omim", "type": "SieveEvidenceLine"})["anchor"]
+    'line-x-omim'
+    """
+    kind = item.get("type")
+    if kind == "SieveEvidenceLine":
+        return {
+            "kind": "line",
+            "id": item["id"],
+            "anchor": line_anchor(item["id"]),
+            "direction": item.get("direction_of_evidence_provided"),
+            "strength": item.get("strength_of_evidence_provided"),
+        }
+    if kind == "Publication":
+        return _publication_view(item)
+    if kind == "ExternalRecord":
+        return _record_view(item)
+    if kind == "ComputationalScore":
+        return {
+            "kind": "score",
+            "id": item["id"],
+            "value": item.get("value"),
+            "parameters": item.get("parameters"),
+            "specified_by": item.get("specified_by") or [],
+            "software_version": item.get("software_version"),
+        }
+    if item.get("subject") is not None and item.get("predicate") is not None:
+        records = [r for r in item.get("reported_in") or [] if r.get("type") != "Publication"]
+        record = _record_view(records[0]) if records else None
+        predicate = item["predicate"]
+        return {
+            "kind": "claim",
+            "id": item["id"],
+            "type": kind,
+            "record_id": record["id"] if record else item["subject"],
+            "subject": item["subject"],
+            "predicate": predicate.get("label") or predicate.get("code"),
+            "predicate_code": predicate.get("code"),
+            "object": item.get("object"),
+            "record": record,
+            "resource": item.get("resource"),
+            "context": [c.get("label") or c.get("code") for c in item.get("generation_context") or []],
+            "publications": [_publication_view(r) for r in item.get("reported_in") or [] if r.get("type") == "Publication"],
+            "resolution_chains": [
+                f"{step.get('input_value')} → {step.get('output_value')} ({g.get('entity_slot')})"
+                for g in item.get("resolution_chains") or []
+                for step in g.get("steps") or []
+            ],
+            "obsolete": bool(item.get("obsolete_in_source")),
+        }
+    return {"kind": "other", "id": item.get("id"), "type": kind}
 
 
-@app.get("/", response_class=HTMLResponse)
-async def dashboard(request: Request) -> HTMLResponse:
-    """Dashboard with summary statistics."""
-    stats = _get_stats()
-    store = _get_store()
-    store_stats = store.get_stats()
-    return templates.TemplateResponse(
-        "dashboard.html",
-        {"request": request, "stats": stats, "store_stats": store_stats},
-    )
+def _line_view(line: dict[str, Any]) -> dict[str, Any]:
+    """One evidence line: its interpretation and its items."""
+    contributions = line.get("contributions") or []
+    act = contributions[0] if contributions else {}
+    return {
+        "id": line["id"],
+        "anchor": line_anchor(line["id"]),
+        "description": line.get("description"),
+        "direction": line.get("direction_of_evidence_provided"),
+        "strength": line.get("strength_of_evidence_provided"),
+        "score": line.get("score_of_evidence_provided"),
+        "cluster": line.get("independence_cluster"),
+        "rule": line.get("computed_by_rule"),
+        "confidence": line.get("confidence"),
+        "date_attached": line.get("date_attached"),
+        "last_confirmed_against": line.get("last_confirmed_against"),
+        "contributor": act.get("contributor"),
+        "method_type": act.get("method_type"),
+        "specified_by": act.get("specified_by") or [],
+        "read_coverage": act.get("read_coverage"),
+        "rationale": act.get("rationale"),
+        "items": [_item_view(i) for i in line.get("has_evidence_items") or []],
+    }
 
 
-@app.get("/packets", response_class=HTMLResponse)
-async def packet_list(
-    request: Request,
-    page: int = Query(1, ge=1),
-    per_page: int = Query(50, ge=10, le=200),
-    source: str | None = Query(None),
-    predicate: str | None = Query(None),
-    subject: str | None = Query(None),
-    q: str | None = Query(None),
-    min_evidence: int | None = Query(None, ge=1),
-) -> HTMLResponse:
-    """Paginated, filterable list of evidence packets."""
-    store = _get_store()
+def _snapshot_view(snapshot: dict[str, Any]) -> dict[str, Any]:
+    """The frozen reference snapshot: resources with their latest quality, rules, agents, methods."""
+    resources = []
+    for r in snapshot.get("resources") or []:
+        ratings = r.get("quality_ratings") or []
+        resources.append({"id": r["id"], "label": r.get("label"), "quality": ratings[-1]["level"] if ratings else None})
+    return {
+        "resources": resources,
+        "releases": snapshot.get("releases") or [],
+        "agents": snapshot.get("agents") or [],
+        "methods": snapshot.get("methods") or [],
+        "rules": snapshot.get("aggregation_rules") or [],
+    }
 
-    # Collect all packet summaries (cached after first load)
-    summaries = _get_packet_summaries(store)
 
-    # Apply filters
-    filtered = summaries
-    if source:
-        filtered = [s for s in filtered if source in s["sources"]]
-    if predicate:
-        filtered = [s for s in filtered if predicate == s["predicate"]]
-    if subject:
-        filtered = [
-            s for s in filtered
-            if subject.lower() in (s["subject"] or "").lower()
-            or subject.lower() in (s["subject_label"] or "").lower()
-        ]
-    if q:
-        q_lower = q.lower()
-        filtered = [
-            s for s in filtered
-            if q_lower in (s["subject"] or "").lower()
-            or q_lower in (s["subject_label"] or "").lower()
-            or q_lower in (s["object"] or "").lower()
-            or q_lower in (s["object_label"] or "").lower()
-            or q_lower in s["id"].lower()
-        ]
-    if min_evidence is not None:
-        filtered = [s for s in filtered if s["n_evidence"] >= min_evidence]
+def packet_view(packet: dict[str, Any]) -> dict[str, Any]:
+    """Everything the detail page shows, from one packet dict.
 
-    total = len(filtered)
-    total_pages = max(1, (total + per_page - 1) // per_page)
-    page = min(page, total_pages)
-    start = (page - 1) * per_page
-    page_items = filtered[start : start + per_page]
+    The heading is the statement text (it names the subject), or the subject CURIE.
 
-    # Get available filter values
-    stats = _get_stats()
-
-    return templates.TemplateResponse(
-        "packets.html",
-        {
-            "request": request,
-            "packets": page_items,
-            "page": page,
-            "per_page": per_page,
-            "total": total,
-            "total_pages": total_pages,
-            "source": source or "",
-            "predicate": predicate or "",
-            "subject": subject or "",
-            "q": q or "",
-            "min_evidence": min_evidence or "",
-            "available_sources": sorted(stats.by_source.keys()),
-            "available_predicates": sorted(stats.by_predicate.keys()),
-            "available_evidence_counts": sorted(
-                int(k) for k in stats.by_evidence_count.keys()
-            ),
+    >>> view = packet_view({"id": "mondoai:pkt/1", "statement": {"type": "SynonymStatement",
+    ...     "subject": "MONDO:1", "object": "CF", "predicate": {"code": "c"}}})
+    >>> view["heading"], view["lines"], view["has_evidence"]
+    ('MONDO:1', [], [])
+    """
+    st = packet["statement"]
+    predicate = st.get("predicate") or {}
+    return {
+        "id": packet["id"],
+        "version": packet.get("version"),
+        "heading": st.get("statement_text") or st["subject"],
+        "statement": {
+            "id": st.get("id"),
+            "type": st["type"],
+            "subject": st["subject"],
+            "predicate": predicate.get("label") or predicate.get("code"),
+            "predicate_code": predicate.get("code"),
+            "object": st["object"],
+            "text": st.get("statement_text"),
+            "review_state": st.get("review_state"),
+            "proposing_channel": st.get("proposing_channel"),
+            "score": st.get("score"),
+            "strength": st.get("strength"),
+            "direction": st.get("direction"),
         },
-    )
-
-
-_summaries_cache: list[dict[str, Any]] | None = None
-
-
-def _get_packet_summaries(store: JSONLPacketStore) -> list[dict[str, Any]]:
-    """Get cached list of all packet summaries."""
-    global _summaries_cache
-    if _summaries_cache is None:
-        _summaries_cache = [_packet_summary(p) for p in store.iter_packets()]
-    return _summaries_cache
-
-
-@app.get("/packets/{packet_id}", response_class=HTMLResponse)
-async def packet_detail(request: Request, packet_id: str) -> HTMLResponse:
-    """Detail view for a single evidence packet."""
-    store = _get_store()
-    packet = store.get_packet(packet_id)
-    if packet is None:
-        return templates.TemplateResponse(
-            "not_found.html",
-            {"request": request, "packet_id": packet_id},
-            status_code=404,
-        )
-    return templates.TemplateResponse(
-        "packet_detail.html",
-        {"request": request, "packet": packet},
-    )
-
-
-@app.get("/api/stats")
-async def api_stats() -> dict:
-    """JSON API endpoint for statistics."""
-    stats = _get_stats()
-    return {
-        "total_packets": stats.total_packets,
-        "total_evidence_lines": stats.total_evidence_lines,
-        "total_evidence_items": stats.total_evidence_items,
-        "unique_subjects": stats.unique_subjects,
-        "by_predicate": stats.by_predicate,
-        "by_source": stats.by_source,
-        "by_status": stats.by_status,
+        "lines": [_line_view(li) for li in st.get("has_evidence_lines") or []],
+        "has_evidence": [_item_view(i) for i in st.get("has_evidence") or []],
+        "snapshot": _snapshot_view(packet.get("reference_snapshot") or {}),
     }
+
+
+# ---------------------------------------------------------------------------
+# Store state
+# ---------------------------------------------------------------------------
+
+
+class _StoreState:
+    """The store with its statistics and packet summaries, computed on first use in one pass."""
+
+    def __init__(self, store_dir: Path | str) -> None:
+        self.store_dir = Path(store_dir)
+        self._store: JSONLPacketStore | None = None
+        self._stats: PacketStats | None = None
+        self._summaries: list[dict[str, Any]] = []
+
+    @property
+    def store(self) -> JSONLPacketStore:
+        """The packet store, opened on first use (opening creates the directory)."""
+        if self._store is None:
+            self._store = JSONLPacketStore(self.store_dir)
+        return self._store
+
+    def _load(self) -> None:
+        summaries: list[dict[str, Any]] = []
+
+        def collect(packets: Iterable[dict[str, Any]]) -> Iterator[dict[str, Any]]:
+            for p in packets:
+                summaries.append(summarize_packet(p))
+                yield p
+
+        self._stats = compute_stats(collect(self.store.iter_packets()))
+        self._summaries = summaries
+
+    @property
+    def stats(self) -> PacketStats:
+        """Statistics over the whole store."""
+        if self._stats is None:
+            self._load()
+        assert self._stats is not None
+        return self._stats
+
+    @property
+    def summaries(self) -> list[dict[str, Any]]:
+        """One summary per packet (see :func:`mondo_ai.storage.index.summarize_packet`)."""
+        if self._stats is None:
+            self._load()
+        return self._summaries
+
+
+def _bound(value: str | None) -> float | None:
+    """A score bound from a query parameter; empty means none.
+
+    >>> _bound(""), _bound(None), _bound("0.5")
+    (None, None, 0.5)
+    """
+    return float(value) if value else None
+
+
+def _filter(
+    summaries: list[dict[str, Any]],
+    claim_type: str | None,
+    review_state: str | None,
+    source: str | None,
+    min_score: float | None,
+    max_score: float | None,
+    q: str | None,
+) -> list[dict[str, Any]]:
+    """The summaries matching every given filter."""
+    out = summaries
+    if claim_type:
+        out = [s for s in out if s["claim_type"] == claim_type]
+    if review_state:
+        out = [s for s in out if s["review_state"] == review_state]
+    if source:
+        out = [s for s in out if source in s["sources"]]
+    if min_score is not None:
+        out = [s for s in out if s["score"] is not None and s["score"] >= min_score]
+    if max_score is not None:
+        out = [s for s in out if s["score"] is not None and s["score"] <= max_score]
+    if q:
+        ql = q.lower()
+        out = [
+            s
+            for s in out
+            if ql in (s["statement_text"] or "").lower()
+            or ql in s["subject"].lower()
+            or ql in s["object"].lower()
+            or ql in s["packet_id"].lower()
+        ]
+    return out
+
+
+# ---------------------------------------------------------------------------
+# App
+# ---------------------------------------------------------------------------
+
+
+def create_app(store_dir: Path | str = STORE_DIR) -> FastAPI:
+    """A browser app over the JSONL store in ``store_dir`` (read lazily, on first request).
+
+    >>> create_app("packet_store_merged").title
+    'MondoAI Evidence Packet Browser'
+    """
+    web = FastAPI(title="MondoAI Evidence Packet Browser")
+    state = _StoreState(store_dir)
+    templates.env.globals["packet_path"] = packet_path
+
+    @web.get("/", response_class=HTMLResponse)
+    async def dashboard(request: Request) -> HTMLResponse:
+        """Dashboard with summary statistics."""
+        return templates.TemplateResponse(
+            request,
+            "dashboard.html",
+            {"stats": state.stats, "store_stats": state.store.get_stats()},
+        )
+
+    @web.get("/packets", response_class=HTMLResponse)
+    async def packet_list(
+        request: Request,
+        page: int = Query(1, ge=1),
+        per_page: int = Query(50, ge=10, le=200),
+        claim_type: str | None = Query(None),
+        review_state: str | None = Query(None),
+        source: str | None = Query(None),
+        min_score: str | None = Query(None),
+        max_score: str | None = Query(None),
+        q: str | None = Query(None),
+    ) -> HTMLResponse:
+        """Paginated, filterable list of packets (an empty score box means no bound)."""
+        low, high = _bound(min_score), _bound(max_score)
+        filtered = _filter(state.summaries, claim_type, review_state, source, low, high, q)
+        total = len(filtered)
+        total_pages = max(1, (total + per_page - 1) // per_page)
+        page = min(page, total_pages)
+        start = (page - 1) * per_page
+        filters = {
+            "claim_type": claim_type or "",
+            "review_state": review_state or "",
+            "source": source or "",
+            "min_score": "" if low is None else low,
+            "max_score": "" if high is None else high,
+            "q": q or "",
+        }
+        stats = state.stats
+        return templates.TemplateResponse(
+            request,
+            "packets.html",
+            {
+                "packets": filtered[start : start + per_page],
+                "page": page,
+                "per_page": per_page,
+                "total": total,
+                "total_pages": total_pages,
+                "filters": filters,
+                "query_string": urlencode({k: v for k, v in filters.items() if v != ""}),
+                "active": any(v != "" for v in filters.values()),
+                "available_claim_types": sorted(stats.by_claim_type),
+                "available_review_states": sorted(stats.by_review_state),
+                "available_sources": sorted({src for s in state.summaries for src in s["sources"]}),
+            },
+        )
+
+    @web.get("/packets/{key:path}", response_class=HTMLResponse)
+    async def packet_detail(request: Request, key: str) -> HTMLResponse:
+        """Detail view of one packet."""
+        pid = packet_id_from_key(key)
+        packet = state.store.get_packet(pid)
+        if packet is None:
+            return templates.TemplateResponse(request, "not_found.html", {"packet_id": pid}, status_code=404)
+        return templates.TemplateResponse(request, "packet_detail.html", {"p": packet_view(packet)})
+
+    @web.get("/api/stats")
+    async def api_stats() -> dict[str, Any]:
+        """Statistics as JSON."""
+        stats = state.stats
+        return {
+            "total_packets": stats.total_packets,
+            "total_evidence_lines": stats.total_evidence_lines,
+            "total_evidence_items": stats.total_evidence_items,
+            "unique_subjects": stats.unique_subjects,
+            "by_claim_type": stats.by_claim_type,
+            "by_predicate": stats.by_predicate,
+            "by_review_state": stats.by_review_state,
+            "by_source": stats.by_source,
+            "by_strength": stats.by_strength,
+            "score_distribution": stats.score_distribution,
+        }
+
+    return web
+
+
+app = create_app()

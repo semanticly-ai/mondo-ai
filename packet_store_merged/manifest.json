@@ -1,15 +1,15 @@
 {
-  "version": "1.0",
+  "version": "2.0",
   "files": [
     {
-      "filename": "packets_000.jsonl",
+      "filename": "packets_000.jsonl.gz",
       "status": "open",
-      "size_bytes": 7162565,
-      "packet_count": 6495,
-      "created": "2026-08-16T23:14:25.768065",
+      "size_bytes": 26447987,
+      "packet_count": 109541,
+      "created": "2026-11-23T09:51:27.226698",
       "sealed_at": null
     }
   ],
-  "total_packets": 6495,
-  "total_size_bytes": 7162565
+  "total_packets": 109541,
+  "total_size_bytes": 26447987
 }

@@ -1,398 +1,445 @@
-"""Tests for the enrichment module."""
+"""Tests for PubMed enrichment of SIEVE profile packets.
 
+Enrichment attaches PubMed hits to the packet's claim as direct evidence
+(``statement.has_evidence``): Publications with no interpretation and no strength, so the
+score does not move. Every enriched packet must still pass the profile.
+"""
+
+import copy
+from functools import lru_cache
+from pathlib import Path
 from unittest.mock import MagicMock
 
+import pytest
 
+from mondo_ai.config import get_default_config
 from mondo_ai.datamodel import (
-    ConcordanceItem,
-    CurationStatus,
-    EvidenceDirection,
-    EvidenceItemType,
-    EvidencePacket,
-    EvidenceStrength,
-    SieveDocument,
-    SieveEvidenceLine,
-    SieveStatement,
-    StatementPredicate,
-    predicate_to_coding,
+    EntityMapping,
+    EntitySnapshot,
+    ResourceSnapshot,
+    Synonym,
+    SynonymScope,
+)
+from mondo_ai.enrichment.enricher import (
+    PacketEnricher,
+    claim_terms,
+    has_literature_evidence,
+    paper_to_publication,
 )
 from mondo_ai.enrichment.pubmed import (
     PubMedPaper,
     ReferenceCache,
     build_search_query,
+    parse_article,
 )
-from mondo_ai.enrichment.enricher import PacketEnricher, has_literature_evidence
+from mondo_ai.mapping.sssom_reader import SSSOMReader
+from mondo_ai.packets.builder import PacketBuilder, Source
+from mondo_ai.packets.registry import PUBMED
+from mondo_ai.packets.validate import validate_packet
+from mondo_ai.scoring.scorer import explain
+
+DATE = "2026-11-20"
+
+# --- a tiny build: Mondo plus DOID, normalized through a two-row SSSOM file ------------
+
+_SSSOM = [
+    ("MONDO:1", "cystic fibrosis", "skos:exactMatch", "DOID:1485"),
+    ("MONDO:2", "lung disease", "skos:exactMatch", "DOID:850"),
+]
+
+
+def _snap(rid: str, version: str, entities: list[EntitySnapshot]) -> ResourceSnapshot:
+    return ResourceSnapshot(
+        resource_id=rid, version=version, entity_count=len(entities), entities=entities
+    )
+
+
+@lru_cache(maxsize=1)
+def _built(tmp: str) -> tuple[dict, ...]:
+    """Merged packets of the tiny build (built once per session)."""
+    lines = [
+        "# mapping_set_id: http://purl.obolibrary.org/obo/mondo/mappings/mondo.sssom.tsv"
+    ]
+    lines.append(
+        "subject_id\tsubject_label\tpredicate_id\tobject_id\tobject_label\tmapping_justification"
+    )
+    lines += ["\t".join([*row, "", "semapv:ManualMappingCuration"]) for row in _SSSOM]
+    path = Path(tmp) / "mondo.sssom.tsv"
+    path.write_text("\n".join(lines) + "\n")
+    mondo = _snap(
+        "mondo",
+        "http://purl.obolibrary.org/obo/mondo/releases/2026-11-03/mondo.owl",
+        [
+            EntitySnapshot(id="MONDO:1", label="cystic fibrosis"),
+            EntitySnapshot(id="MONDO:2", label="lung disease"),
+        ],
+    )
+    doid = _snap(
+        "doid",
+        "http://purl.obolibrary.org/obo/doid/releases/2026-10-29/doid.owl",
+        [
+            EntitySnapshot(
+                id="DOID:1485",
+                label="cystic fibrosis",
+                synonyms=[
+                    Synonym(value="mucoviscidosis", scope=SynonymScope.EXACT),
+                    Synonym(
+                        value="pancreatic fibrosis",
+                        scope=SynonymScope.RELATED,
+                        pmids=["123"],
+                    ),
+                ],
+                parents=["DOID:850"],
+                mappings=[
+                    EntityMapping(
+                        object_id="MONDO:1", predicate_id="oboInOwl:hasDbXref"
+                    )
+                ],
+            ),
+            EntitySnapshot(id="DOID:850", label="lung disease"),
+        ],
+    )
+    config = get_default_config()
+    resources = {r.id: r for r in config.resources}
+    builder = PacketBuilder(
+        sources=[Source(resources["doid"], doid)],
+        mondo=mondo,
+        sssom=SSSOMReader(path),
+        config=config,
+        date=DATE,
+    )
+    _, merged = builder.build(["synonyms", "subclass", "mappings"])
+    return tuple(merged)
+
+
+def built_packets(tmp_path_factory: pytest.TempPathFactory) -> list[dict]:
+    """Fresh deep copies of the merged packets of the tiny build (shared with other test modules)."""
+    return copy.deepcopy(list(_built(str(tmp_path_factory.getbasetemp()))))
+
+
+@pytest.fixture
+def packets(tmp_path_factory) -> list[dict]:
+    """The packets of the tiny build."""
+    return built_packets(tmp_path_factory)
+
+
+def find(packets: list[dict], claim_type: str, obj: str) -> dict:
+    """The packet of the given claim type and object."""
+    for p in packets:
+        if p["statement"]["type"] == claim_type and p["statement"]["object"] == obj:
+            return p
+    raise AssertionError(f"no {claim_type} packet with object {obj}")
+
+
+def make_paper(
+    pmid: str = "12345678", title: str = "Mucoviscidosis in adults", **kw
+) -> PubMedPaper:
+    """A PubMed paper with a full publication date and one publication type."""
+    fields = dict(
+        pmid=pmid,
+        title=title,
+        abstract="A study of mucoviscidosis.",
+        authors=["Smith J"],
+        journal="Test Journal",
+        year="2023",
+        doi=None,
+        publication_date="2023-05-17",
+        publication_types=[("D016428", "Journal Article")],
+    )
+    fields.update(kw)
+    return PubMedPaper(**fields)  # type: ignore[arg-type]
+
+
+def assert_valid(packet: dict) -> None:
+    """The packet passes the profile and its statement score is the reference score."""
+    assert validate_packet(packet) == []
+    st = packet["statement"]
+    assert st["score"] == pytest.approx(explain(packet).s, abs=1e-4)
+
+
+# --- query building --------------------------------------------------------------------
 
 
 class TestBuildSearchQuery:
-    """Tests for the build_search_query function."""
-
     def test_basic_query(self):
-        """Test building a basic search query."""
         query = build_search_query("asthma", "bronchial asthma")
-        assert "asthma" in query
-        assert "bronchial asthma" in query
+        assert '"asthma"[Title/Abstract]' in query
+        assert '"bronchial asthma"[Title/Abstract]' in query
 
     def test_disease_only(self):
-        """Test query with disease only."""
-        query = build_search_query("asthma", "")
-        assert "asthma" in query
+        assert build_search_query("asthma", "") == '("asthma"[Title/Abstract])'
 
-    def test_synonym_only(self):
-        """Test query with synonym only."""
-        query = build_search_query("", "bronchial asthma")
-        assert "bronchial asthma" in query
+    def test_same_term_once(self):
+        assert build_search_query("asthma", "Asthma") == '("asthma"[Title/Abstract])'
+
+
+class TestClaimTerms:
+    def test_synonym_terms_from_statement_text(self, packets):
+        st = find(packets, "SynonymStatement", "mucoviscidosis")["statement"]
+        assert claim_terms(st) == ("cystic fibrosis", "mucoviscidosis")
+
+    def test_subclass_terms_from_statement_text(self, packets):
+        st = find(packets, "SubclassStatement", "MONDO:2")["statement"]
+        assert claim_terms(st) == ("cystic fibrosis", "lung disease")
+
+    def test_labels_passed_in_win(self, packets):
+        st = find(packets, "SubclassStatement", "MONDO:2")["statement"]
+        labels = {"MONDO:1": "CF", "MONDO:2": "pulmonary disease"}
+        assert claim_terms(st, labels) == ("CF", "pulmonary disease")
+
+
+# --- PubMed papers ---------------------------------------------------------------------
+
+ARTICLE_XML = b"""<?xml version="1.0"?>
+<PubmedArticleSet><PubmedArticle><MedlineCitation><Article>
+<Journal><Title>Test Journal</Title><JournalIssue><PubDate><Year>2021</Year><Month>Mar</Month></PubDate></JournalIssue></Journal>
+<ArticleTitle>Cystic fibrosis today</ArticleTitle>
+<Abstract><AbstractText>Background.</AbstractText><AbstractText>Results.</AbstractText></Abstract>
+<AuthorList><Author><LastName>Doe</LastName><ForeName>Jane</ForeName></Author></AuthorList>
+<PublicationTypeList><PublicationType UI="D016428">Journal Article</PublicationType>
+<PublicationType UI="D016454">Review</PublicationType></PublicationTypeList>
+<ArticleDate DateType="Electronic"><Year>2021</Year><Month>02</Month><Day>09</Day></ArticleDate>
+</Article></MedlineCitation>
+<PubmedData><ArticleIdList><ArticleId IdType="doi">10.1/x</ArticleId></ArticleIdList></PubmedData>
+</PubmedArticle></PubmedArticleSet>"""
 
 
 class TestPubMedPaper:
-    """Tests for the PubMedPaper dataclass."""
+    def test_reference_id(self):
+        assert make_paper("99999999").reference_id == "PMID:99999999"
 
-    def test_paper_creation(self):
-        """Test creating a PubMed paper."""
-        paper = PubMedPaper(
-            pmid="12345678",
-            title="Test Paper Title",
-            abstract="This is the abstract.",
-            authors=["Smith J", "Jones M"],
-            journal="Test Journal",
-            year="2023",
-            doi="10.1234/test",
-        )
-        assert paper.pmid == "12345678"
-        assert paper.title == "Test Paper Title"
-        assert paper.reference_id == "PMID:12345678"
+    def test_parse_article(self):
+        paper = parse_article("42", ARTICLE_XML)
+        assert paper is not None
+        assert paper.title == "Cystic fibrosis today"
+        assert paper.abstract == "Background.\nResults."
+        assert paper.authors == ["Jane Doe"]
+        assert paper.year == "2021"
+        assert paper.doi == "10.1/x"
+        assert paper.publication_date == "2021-02-09"
+        assert paper.publication_types == [
+            ("D016428", "Journal Article"),
+            ("D016454", "Review"),
+        ]
 
-    def test_reference_id_property(self):
-        """Test the reference_id property."""
-        paper = PubMedPaper(
-            pmid="99999999",
-            title="Test",
-            abstract=None,
-            authors=[],
-            journal=None,
-            year=None,
-            doi=None,
+    def test_parse_article_without_full_date(self):
+        xml = ARTICLE_XML.replace(
+            b'<ArticleDate DateType="Electronic"><Year>2021</Year><Month>02</Month><Day>09</Day></ArticleDate>',
+            b"",
         )
-        assert paper.reference_id == "PMID:99999999"
+        paper = parse_article("42", xml)
+        assert paper is not None
+        assert paper.publication_date is None
+        assert paper.year == "2021"
+
+    def test_parse_empty_set(self):
+        assert parse_article("42", b"<PubmedArticleSet/>") is None
 
 
 class TestReferenceCache:
-    """Tests for the ReferenceCache class."""
-
     def test_cache_path(self, tmp_path):
-        """Test cache path generation."""
-        cache = ReferenceCache(cache_dir=tmp_path)
-        path = cache._get_cache_path("12345678")
-        assert path.name == "PMID_12345678.md"
-        assert path.parent == tmp_path
+        path = ReferenceCache(cache_dir=tmp_path)._get_cache_path("12345678")
+        assert path == tmp_path / "PMID_12345678.md"
 
-    def test_paper_to_markdown(self, tmp_path):
-        """Test converting paper to markdown."""
-        paper = PubMedPaper(
-            pmid="12345678",
-            title="Test Paper",
-            abstract="Test abstract content.",
-            authors=["Smith J"],
-            journal="Test Journal",
-            year="2023",
-            doi="10.1234/test",
-        )
-        markdown = paper.to_markdown()
-        assert "---" in markdown
-        assert "title: Test Paper" in markdown
-        assert "Test abstract content." in markdown
+    def test_markdown_has_frontmatter(self):
+        markdown = make_paper().to_markdown()
+        assert markdown.startswith("---")
+        assert "title: Mucoviscidosis in adults" in markdown
+        assert "A study of mucoviscidosis." in markdown
 
-    def test_put_and_get(self, tmp_path):
-        """Test saving and loading a paper from cache."""
+    def test_put_and_get_round_trip(self, tmp_path):
         cache = ReferenceCache(cache_dir=tmp_path)
-        paper = PubMedPaper(
-            pmid="12345678",
-            title="Test Paper",
-            abstract="Test abstract content.",
-            authors=["Smith J"],
-            journal="Test Journal",
-            year="2023",
-            doi=None,
-        )
-        # Save
+        paper = make_paper()
         cache.put(paper)
-        # Load
-        loaded = cache.get("12345678")
-        assert loaded is not None
-        assert loaded.pmid == "12345678"
-        assert loaded.title == "Test Paper"
+        assert cache.get(paper.pmid) == paper
 
     def test_get_missing(self, tmp_path):
-        """Test loading a missing paper returns None."""
-        cache = ReferenceCache(cache_dir=tmp_path)
-        result = cache.get("nonexistent")
-        assert result is None
+        assert ReferenceCache(cache_dir=tmp_path).get("nonexistent") is None
+
+
+# --- Publication items -----------------------------------------------------------------
+
+
+class TestPaperToPublication:
+    def test_publication_shape(self):
+        pub = paper_to_publication(make_paper(), DATE)
+        assert pub == {
+            "id": "PMID:12345678",
+            "type": "Publication",
+            "resource": PUBMED,
+            "label": "Mucoviscidosis in adults",
+            "date_authored": "2023-05-17",
+            "record_metadata": {"retrieved_from": PUBMED, "retrieval_date": DATE},
+            "generation_context": [
+                {"code": "MESH:D016428", "label": "Journal Article"}
+            ],
+        }
+
+    def test_unknown_basis_and_date(self):
+        pub = paper_to_publication(
+            make_paper(publication_date=None, publication_types=[]), DATE
+        )
+        assert "date_authored" not in pub
+        assert pub["generation_context"] == [{"code": "sieve:basis_unknown"}]
+
+
+# --- literature detection --------------------------------------------------------------
 
 
 class TestHasLiteratureEvidence:
-    """Tests for the has_literature_evidence function."""
+    def test_built_packet_has_none(self, packets):
+        assert (
+            has_literature_evidence(find(packets, "SynonymStatement", "mucoviscidosis"))
+            is False
+        )
 
-    def test_empty_packet(self):
-        """Test packet with no evidence lines."""
-        stmt = SieveStatement(
-            id="test_stmt",
-            type="SieveStatement",
-            subject="MONDO:0005015",
-            subject_label="diabetes mellitus",
-            object="diabetes",
+    def test_source_citation_inside_a_prior_claim_does_not_count(self, packets):
+        # DOID cites PMID:123 on its related synonym; that is the source's claim, not literature attached to ours.
+        assert (
+            has_literature_evidence(
+                find(packets, "SynonymStatement", "pancreatic fibrosis")
+            )
+            is False
         )
-        packet = EvidencePacket(
-            id="test_pkt",
-            statement=stmt,
-            status=CurationStatus.UNREVIEWED,
-        )
-        assert has_literature_evidence(packet) is False
 
-    def test_packet_with_concordance_only(self):
-        """Test packet with only concordance evidence."""
-        stmt = SieveStatement(
-            id="test_stmt",
-            type="SieveStatement",
-            subject="MONDO:0005015",
-            subject_label="diabetes mellitus",
-            object="diabetes",
-        )
-        concordance = ConcordanceItem(
-            id="ev_001",
-            type="ConcordanceItem",
-            evidence_item_type=EvidenceItemType.ConcordanceItem,
-            source_name="OMIM",
-            source_id="omim",
-            source_subject="OMIM:125853",
-            source_subject_label="Diabetes mellitus",
-        )
-        line = SieveEvidenceLine(
-            id="el_001",
-            type="SieveEvidenceLine",
-            has_evidence_items=[concordance],
-            direction_of_evidence_provided=EvidenceDirection.supports.value,
-            strength_of_evidence_provided=EvidenceStrength.moderate.value,
-        )
-        packet = EvidencePacket(
-            id="test_pkt",
-            statement=stmt,
-            status=CurationStatus.UNREVIEWED,
-            has_evidence_lines=[line],
-        )
-        assert has_literature_evidence(packet) is False
+    def test_direct_evidence_counts(self, packets):
+        packet = find(packets, "SynonymStatement", "mucoviscidosis")
+        packet["statement"]["has_evidence"] = [paper_to_publication(make_paper(), DATE)]
+        assert has_literature_evidence(packet) is True
 
-    def test_packet_with_literature(self):
-        """Test packet with literature evidence."""
-        stmt = SieveStatement(
-            id="test_stmt",
-            type="SieveStatement",
-            subject="MONDO:0005015",
-            subject_label="diabetes mellitus",
-            object="diabetes",
-        )
-        doc = SieveDocument(
-            id="ev_002",
-            type="SieveDocument",
-            title="A study about diabetes",
-            pmid="12345678",
-        )
-        line = SieveEvidenceLine(
-            id="el_002",
-            type="SieveEvidenceLine",
-            has_evidence_items=[doc],
-            direction_of_evidence_provided=EvidenceDirection.supports.value,
-            strength_of_evidence_provided=EvidenceStrength.moderate.value,
-        )
-        packet = EvidencePacket(
-            id="test_pkt",
-            statement=stmt,
-            status=CurationStatus.UNREVIEWED,
-            has_evidence_lines=[line],
+    def test_publication_in_a_line_counts(self, packets):
+        packet = find(packets, "SynonymStatement", "mucoviscidosis")
+        packet["statement"]["has_evidence_lines"][0]["has_evidence_items"].append(
+            paper_to_publication(make_paper(), DATE)
         )
         assert has_literature_evidence(packet) is True
 
-    def test_packet_with_mixed_evidence(self):
-        """Test packet with both concordance and literature evidence."""
-        stmt = SieveStatement(
-            id="test_stmt",
-            type="SieveStatement",
-            subject="MONDO:0005015",
-            subject_label="diabetes mellitus",
-            object="diabetes",
-        )
-        concordance = ConcordanceItem(
-            id="ev_001",
-            type="ConcordanceItem",
-            evidence_item_type=EvidenceItemType.ConcordanceItem,
-            source_name="OMIM",
-            source_id="omim",
-            source_subject="OMIM:125853",
-            source_subject_label="Diabetes mellitus",
-        )
-        doc = SieveDocument(
-            id="ev_002",
-            type="SieveDocument",
-            title="A study about diabetes",
-            pmid="12345678",
-        )
-        concordance_line = SieveEvidenceLine(
-            id="el_001",
-            type="SieveEvidenceLine",
-            has_evidence_items=[concordance],
-            direction_of_evidence_provided=EvidenceDirection.supports.value,
-            strength_of_evidence_provided=EvidenceStrength.moderate.value,
-        )
-        literature_line = SieveEvidenceLine(
-            id="el_002",
-            type="SieveEvidenceLine",
-            has_evidence_items=[doc],
-            direction_of_evidence_provided=EvidenceDirection.supports.value,
-            strength_of_evidence_provided=EvidenceStrength.moderate.value,
-        )
-        packet = EvidencePacket(
-            id="test_pkt",
-            statement=stmt,
-            status=CurationStatus.UNREVIEWED,
-            has_evidence_lines=[concordance_line, literature_line],
-        )
-        assert has_literature_evidence(packet) is True
+
+# --- the enricher ----------------------------------------------------------------------
+
+
+def _enricher(papers: list[PubMedPaper], **kw) -> tuple[PacketEnricher, MagicMock]:
+    client = MagicMock()
+    client.search_and_fetch.return_value = papers
+    return PacketEnricher(pubmed_client=client, date=DATE, **kw), client
 
 
 class TestPacketEnricher:
-    """Tests for the PacketEnricher class."""
-
-    def _make_packet(self, score: float | None = None) -> EvidencePacket:
-        """Create a test packet with SIEVE structure."""
-        stmt = SieveStatement(
-            id="test_stmt_001",
-            type="SieveStatement",
-            subject="MONDO:0005015",
-            subject_label="diabetes mellitus",
-            predicate=predicate_to_coding(StatementPredicate.EXACT_SYNONYM),
-            object="diabetes",
-            object_label="diabetes",
+    def test_attaches_publications_as_direct_evidence(self, packets):
+        packet = find(packets, "SynonymStatement", "mucoviscidosis")
+        lines_before = copy.deepcopy(packet["statement"]["has_evidence_lines"])
+        enricher, client = _enricher(
+            [make_paper("1"), make_paper("2", "Second")], max_papers=2
         )
-        return EvidencePacket(
-            id="test_pkt",
-            statement=stmt,
-            status=CurationStatus.UNREVIEWED,
-            has_evidence_lines=[],
-        )
-
-    def _make_paper(self, pmid: str = "12345678", title: str = "Test Paper") -> PubMedPaper:
-        """Create a test paper."""
-        return PubMedPaper(
-            pmid=pmid,
-            title=title,
-            abstract="A study about the topic.",
-            authors=["Smith J"],
-            journal="Test Journal",
-            year="2023",
-            doi=None,
-        )
-
-    def test_should_enrich_no_threshold(self):
-        """Test should_enrich when no threshold is set."""
-        mock_client = MagicMock()
-        enricher = PacketEnricher(pubmed_client=mock_client, min_score_threshold=None)
-        packet = self._make_packet()
-        assert enricher.should_enrich(packet) is True
-
-    def test_enrich_adds_literature(self):
-        """Test that enrich adds literature evidence."""
-        mock_client = MagicMock()
-        mock_client.search_and_fetch.return_value = [self._make_paper("12345678", "Diabetes Study")]
-        enricher = PacketEnricher(pubmed_client=mock_client, max_papers=1)
-        packet = self._make_packet()
 
         enriched = enricher.enrich(packet)
 
-        # SIEVE: evidence is in has_evidence_lines
-        assert len(enriched.has_evidence_lines) == 1
-        line = enriched.has_evidence_lines[0]
-        assert line.direction_of_evidence_provided == "supports"
-        # Evidence items contain SieveDocument
-        assert len(line.has_evidence_items) == 1
-        doc = line.has_evidence_items[0]
-        assert doc.pmid == "12345678"
-
-    def test_enrich_packets_batch(self):
-        """Test batch enrichment."""
-        mock_client = MagicMock()
-        mock_client.search_and_fetch.return_value = [self._make_paper("11111111", "Paper 1")]
-        enricher = PacketEnricher(pubmed_client=mock_client, max_papers=1)
-        packets = [self._make_packet() for _ in range(3)]
-
-        enriched = enricher.enrich_packets(packets)
-
-        assert len(enriched) == 3
-        for packet in enriched:
-            assert len(packet.has_evidence_lines) == 1
-
-    def test_skip_enriched_by_default(self):
-        """Test that packets with literature are skipped by default."""
-        mock_client = MagicMock()
-        mock_client.search_and_fetch.return_value = [self._make_paper()]
-        enricher = PacketEnricher(pubmed_client=mock_client, max_papers=1)
-
-        # Create a packet that already has literature evidence
-        packet = self._make_packet()
-        doc = SieveDocument(
-            id="ev_existing",
-            type="SieveDocument",
-            title="Existing Study",
-            pmid="99999999",
-        )
-        line = SieveEvidenceLine(
-            id="el_existing",
-            type="SieveEvidenceLine",
-            has_evidence_items=[doc],
-            direction_of_evidence_provided=EvidenceDirection.supports.value,
-            strength_of_evidence_provided=EvidenceStrength.moderate.value,
-        )
-        packet.has_evidence_lines = [line]
-
-        # Should skip enrichment
-        assert enricher.should_enrich(packet) is False
-
-        # Enrich should not add new evidence
-        enriched = enricher.enrich(packet)
-        assert len(enriched.has_evidence_lines) == 1
-        assert enriched.has_evidence_lines[0].has_evidence_items[0].pmid == "99999999"
-
-    def test_force_enrichment_with_skip_enriched_false(self):
-        """Test that skip_enriched=False allows re-enrichment."""
-        mock_client = MagicMock()
-        mock_client.search_and_fetch.return_value = [self._make_paper("11111111", "New Study")]
-        enricher = PacketEnricher(pubmed_client=mock_client, max_papers=1, skip_enriched=False)
-
-        # Create a packet that already has literature evidence
-        packet = self._make_packet()
-        doc = SieveDocument(
-            id="ev_existing",
-            type="SieveDocument",
-            title="Existing Study",
-            pmid="99999999",
-        )
-        line = SieveEvidenceLine(
-            id="el_existing",
-            type="SieveEvidenceLine",
-            has_evidence_items=[doc],
-            direction_of_evidence_provided=EvidenceDirection.supports.value,
-            strength_of_evidence_provided=EvidenceStrength.moderate.value,
-        )
-        packet.has_evidence_lines = [line]
-
-        # Should enrich even though it has literature
-        assert enricher.should_enrich(packet) is True
-
-        # Enrich should add new evidence
-        enriched = enricher.enrich(packet)
-        assert len(enriched.has_evidence_lines) == 2
-        pmids = [
-            line.has_evidence_items[0].pmid
-            for line in enriched.has_evidence_lines
-            if hasattr(line.has_evidence_items[0], "pmid")
+        assert [p["id"] for p in enriched["statement"]["has_evidence"]] == [
+            "PMID:1",
+            "PMID:2",
         ]
-        assert "99999999" in pmids
-        assert "11111111" in pmids
+        assert enriched["statement"]["has_evidence_lines"] == lines_before
+        client.search_and_fetch.assert_called_once_with(
+            build_search_query("cystic fibrosis", "mucoviscidosis"), max_results=2
+        )
+        assert_valid(enriched)
+
+    def test_score_does_not_change(self, packets):
+        packet = find(packets, "SynonymStatement", "mucoviscidosis")
+        score = packet["statement"]["score"]
+        enricher, _ = _enricher([make_paper()])
+        assert enricher.enrich(packet)["statement"]["score"] == score
+
+    def test_pubmed_lands_in_the_reference_snapshot(self, packets):
+        packet = find(packets, "SubclassStatement", "MONDO:2")
+        assert PUBMED not in {
+            r["id"] for r in packet["reference_snapshot"].get("resources") or []
+        }
+        enricher, _ = _enricher([make_paper()])
+        enriched = enricher.enrich(packet)
+        entries = [
+            r for r in enriched["reference_snapshot"]["resources"] if r["id"] == PUBMED
+        ]
+        assert entries == [
+            {
+                "id": PUBMED,
+                "type": "InformationResource",
+                "label": "PubMed",
+                "curie_prefixes": ["PMID"],
+                "default_role": "PRIMARY",
+            }
+        ]
+        assert_valid(enriched)
+
+    def test_no_duplicate_ids(self, packets):
+        packet = find(packets, "SynonymStatement", "mucoviscidosis")
+        enricher, _ = _enricher([make_paper("1")], skip_enriched=False)
+        enricher.enrich(packet)
+        enricher.enrich(packet)
+        assert [p["id"] for p in packet["statement"]["has_evidence"]] == ["PMID:1"]
+        assert_valid(packet)
+
+    def test_skips_a_pmid_the_packet_already_carries(self, packets):
+        # PMID:123 is nested in DOID's prior claim as a bare Publication; a richer copy would diverge.
+        packet = find(packets, "SynonymStatement", "pancreatic fibrosis")
+        enricher, _ = _enricher([make_paper("123"), make_paper("7")])
+        enriched = enricher.enrich(packet)
+        assert [p["id"] for p in enriched["statement"]["has_evidence"]] == ["PMID:7"]
+        assert_valid(enriched)
+
+    def test_skip_enriched_by_default(self, packets):
+        packet = find(packets, "SynonymStatement", "mucoviscidosis")
+        packet["statement"]["has_evidence"] = [
+            paper_to_publication(make_paper("9"), DATE)
+        ]
+        enricher, client = _enricher([make_paper("1")])
+        assert enricher.should_enrich(packet) is False
+        enricher.enrich(packet)
+        client.search_and_fetch.assert_not_called()
+        assert [p["id"] for p in packet["statement"]["has_evidence"]] == ["PMID:9"]
+
+    def test_force_with_skip_enriched_false(self, packets):
+        packet = find(packets, "SynonymStatement", "mucoviscidosis")
+        packet["statement"]["has_evidence"] = [
+            paper_to_publication(make_paper("9"), DATE)
+        ]
+        enricher, _ = _enricher([make_paper("1")], skip_enriched=False)
+        enricher.enrich(packet)
+        assert [p["id"] for p in packet["statement"]["has_evidence"]] == [
+            "PMID:9",
+            "PMID:1",
+        ]
+
+    def test_score_threshold(self, packets):
+        packet = find(packets, "SynonymStatement", "mucoviscidosis")
+        score = packet["statement"]["score"]
+        assert PacketEnricher(
+            pubmed_client=MagicMock(), min_score_threshold=score + 0.01
+        ).should_enrich(packet)
+        assert not PacketEnricher(
+            pubmed_client=MagicMock(), min_score_threshold=score
+        ).should_enrich(packet)
+
+    def test_mapping_claims_are_not_enriched(self, packets):
+        # Publications are not evidence for a MappingStatement (claim-evidence matrix).
+        packet = find(packets, "MappingStatement", "DOID:1485")
+        enricher, client = _enricher([make_paper()])
+        assert enricher.should_enrich(packet) is False
+        enricher.enrich(packet)
+        client.search_and_fetch.assert_not_called()
+        assert "has_evidence" not in packet["statement"]
+
+    def test_no_hits_leaves_packet_unchanged(self, packets):
+        packet = find(packets, "SynonymStatement", "mucoviscidosis")
+        before = copy.deepcopy(packet)
+        enricher, _ = _enricher([])
+        assert enricher.enrich(packet) == before
+
+    def test_enrich_packets_batch(self, packets):
+        enricher, _ = _enricher([make_paper("11111111")])
+        enriched = enricher.enrich_packets(packets)
+        assert len(enriched) == len(packets)
+        for packet in enriched:
+            if packet["statement"]["type"] != "MappingStatement":
+                assert has_literature_evidence(packet)
+            assert_valid(packet)
