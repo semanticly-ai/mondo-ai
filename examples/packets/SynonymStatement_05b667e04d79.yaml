@@ -1,0 +1,379 @@
+id: mondoai:pkt/05b667e04d79
+type: EvidencePacket
+version: '2026-11-23'
+statement:
+  id: mondoai:st/05b667e04d79
+  type: SynonymStatement
+  subject: MONDO:0008667
+  predicate:
+    code: oboInOwl:hasExactSynonym
+    label: has exact synonym
+  object: Von Hippel-Lindau syndrome
+  statement_text: von Hippel-Lindau disease has exact synonym 'Von Hippel-Lindau syndrome'
+  review_state: NOT_VERIFIED
+  proposing_channel: SOURCE_INGEST
+  has_evidence_lines:
+  - id: mondoai:el/05b667e04d79-omim
+    type: SieveEvidenceLine
+    description: OMIM carries the synonym on a record Mondo maps exactly to this term.
+    has_evidence_items:
+    - id: mondoai:pc/b2defa9dbd3f
+      type: SynonymStatement
+      subject: OMIM:193300
+      predicate:
+        code: oboInOwl:hasExactSynonym
+        label: has exact synonym
+      object: von hippel-lindau syndrome
+      resource: infores:omim
+      generation_context:
+      - code: sieve:basis_unknown
+      reported_in:
+      - id: OMIM:193300
+        type: ExternalRecord
+        resource: infores:omim
+        label: von hippel-lindau syndrome
+        obsolete_in_source: false
+        record_metadata:
+          retrieved_from: infores:omim
+          source_release: mondoai:release/omim-2026-11-18
+          retrieval_date: '2026-11-23'
+          source_label: von hippel-lindau syndrome
+      resolution_chains:
+      - id: mondoai:rc/d1658a538dc7
+        type: ResolutionChain
+        entity_slot: subject
+        date: '2026-11-23'
+        specified_by:
+        - mondoai:method/sssom-normalization
+        chain_confidence: 1.0
+        steps:
+        - id: mondoai:rc/d1658a538dc7-1
+          type: AlignmentStep
+          category: NORMALIZATION
+          method: DETERMINISTIC_RULE
+          input_value: OMIM:193300
+          output_value: MONDO:0008667
+          predicate: skos:exactMatch
+          mapping_set: http://purl.obolibrary.org/obo/mondo/mappings/mondo.sssom.tsv
+          mapping_set_version: '2026-11-03'
+          quality_category: normalization_curated
+          confidence: 1.0
+          confidence_basis: DETERMINISTIC
+          mapping_justification: semapv:UnspecifiedMatching
+    direction_of_evidence_provided: supports
+    score_of_evidence_provided: 0.95
+    computed_by_rule: mondoai:rule/synonym-v1.0
+    independence_cluster: infores:omim
+    date_attached: '2026-11-23'
+    last_confirmed: '2026-11-23'
+    contributions:
+    - id: mondoai:el/05b667e04d79-omim#act
+      type: InterpretationActivity
+      contributor: mondoai:agent/concordance-pipeline
+      role: INTERPRETER
+      date: '2026-11-23'
+      method_type: RULE_BASED_STRENGTH
+      specified_by:
+      - mondoai:method/source-concordance
+      read_coverage: STRUCTURED_RECORD
+    strength_of_evidence_provided: strong
+    last_confirmed_against: mondoai:release/omim-2026-11-18
+  - id: mondoai:el/05b667e04d79-ordo
+    type: SieveEvidenceLine
+    description: Orphanet Rare Disease Ontology carries the synonym on a record Mondo
+      maps exactly to this term.
+    has_evidence_items:
+    - id: mondoai:pc/2d37f4dfb9a0
+      type: SynonymStatement
+      subject: Orphanet:892
+      predicate:
+        code: oboInOwl:hasExactSynonym
+        label: has exact synonym
+      object: Von Hippel-Lindau syndrome
+      resource: infores:orphanet
+      generation_context:
+      - code: sieve:basis_unknown
+      reported_in:
+      - id: Orphanet:892
+        type: ExternalRecord
+        resource: infores:orphanet
+        label: Von Hippel-Lindau disease
+        obsolete_in_source: false
+        record_metadata:
+          retrieved_from: infores:orphanet
+          source_release: mondoai:release/ordo-4.9
+          retrieval_date: '2026-11-23'
+          source_label: Von Hippel-Lindau disease
+      resolution_chains:
+      - id: mondoai:rc/9b9eb625476a
+        type: ResolutionChain
+        entity_slot: subject
+        date: '2026-11-23'
+        specified_by:
+        - mondoai:method/sssom-normalization
+        chain_confidence: 1.0
+        steps:
+        - id: mondoai:rc/9b9eb625476a-1
+          type: AlignmentStep
+          category: NORMALIZATION
+          method: DETERMINISTIC_RULE
+          input_value: Orphanet:892
+          output_value: MONDO:0008667
+          predicate: skos:exactMatch
+          mapping_set: http://purl.obolibrary.org/obo/mondo/mappings/mondo.sssom.tsv
+          mapping_set_version: '2026-11-03'
+          quality_category: normalization_curated
+          confidence: 1.0
+          confidence_basis: DETERMINISTIC
+          mapping_justification: semapv:UnspecifiedMatching
+    direction_of_evidence_provided: supports
+    score_of_evidence_provided: 0.9
+    computed_by_rule: mondoai:rule/synonym-v1.0
+    independence_cluster: infores:orphanet
+    date_attached: '2026-11-23'
+    last_confirmed: '2026-11-23'
+    contributions:
+    - id: mondoai:el/05b667e04d79-ordo#act
+      type: InterpretationActivity
+      contributor: mondoai:agent/concordance-pipeline
+      role: INTERPRETER
+      date: '2026-11-23'
+      method_type: RULE_BASED_STRENGTH
+      specified_by:
+      - mondoai:method/source-concordance
+      read_coverage: STRUCTURED_RECORD
+    strength_of_evidence_provided: strong
+    last_confirmed_against: mondoai:release/ordo-4.9
+  - id: mondoai:el/05b667e04d79-doid
+    type: SieveEvidenceLine
+    description: Disease Ontology carries the synonym on a record Mondo maps exactly
+      to this term.
+    has_evidence_items:
+    - id: mondoai:pc/d32eacadabf8
+      type: SynonymStatement
+      subject: DOID:14175
+      predicate:
+        code: oboInOwl:hasExactSynonym
+        label: has exact synonym
+      object: von Hippel-Lindau syndrome
+      resource: infores:disease-ontology
+      generation_context:
+      - code: sieve:basis_unknown
+      reported_in:
+      - id: DOID:14175
+        type: ExternalRecord
+        resource: infores:disease-ontology
+        label: von Hippel-Lindau disease
+        obsolete_in_source: false
+        record_metadata:
+          retrieved_from: infores:disease-ontology
+          source_release: mondoai:release/doid-2026-10-29
+          retrieval_date: '2026-11-23'
+          source_label: von Hippel-Lindau disease
+      resolution_chains:
+      - id: mondoai:rc/77f2dee30b17
+        type: ResolutionChain
+        entity_slot: subject
+        date: '2026-11-23'
+        specified_by:
+        - mondoai:method/sssom-normalization
+        chain_confidence: 1.0
+        steps:
+        - id: mondoai:rc/77f2dee30b17-1
+          type: AlignmentStep
+          category: NORMALIZATION
+          method: DETERMINISTIC_RULE
+          input_value: DOID:14175
+          output_value: MONDO:0008667
+          predicate: skos:exactMatch
+          mapping_set: http://purl.obolibrary.org/obo/mondo/mappings/mondo.sssom.tsv
+          mapping_set_version: '2026-11-03'
+          quality_category: normalization_curated
+          confidence: 1.0
+          confidence_basis: DETERMINISTIC
+          mapping_justification: semapv:UnspecifiedMatching
+    direction_of_evidence_provided: supports
+    score_of_evidence_provided: 0.85
+    computed_by_rule: mondoai:rule/synonym-v1.0
+    independence_cluster: infores:omim
+    date_attached: '2026-11-23'
+    last_confirmed: '2026-11-23'
+    contributions:
+    - id: mondoai:el/05b667e04d79-doid#act
+      type: InterpretationActivity
+      contributor: mondoai:agent/concordance-pipeline
+      role: INTERPRETER
+      date: '2026-11-23'
+      method_type: RULE_BASED_STRENGTH
+      specified_by:
+      - mondoai:method/source-concordance
+      read_coverage: STRUCTURED_RECORD
+    strength_of_evidence_provided: strong
+    last_confirmed_against: mondoai:release/doid-2026-10-29
+  - id: mondoai:el/05b667e04d79-icd10cm
+    type: SieveEvidenceLine
+    description: ICD-10-CM carries the synonym on a record Mondo maps exactly to this
+      term.
+    has_evidence_items:
+    - id: mondoai:pc/4d75e5a72bf1
+      type: SynonymStatement
+      subject: ICD10CM:Q85.83
+      predicate:
+        code: oboInOwl:hasExactSynonym
+        label: has exact synonym
+      object: Von Hippel-Lindau syndrome
+      resource: infores:icd10cm
+      generation_context:
+      - code: mondo#GENERATED_FROM:LABEL
+        label: synonym type
+      reported_in:
+      - id: ICD10CM:Q85.83
+        type: ExternalRecord
+        resource: infores:icd10cm
+        label: Von Hippel-Lindau syndrome
+        obsolete_in_source: false
+        record_metadata:
+          retrieved_from: infores:icd10cm
+          source_release: mondoai:release/icd10cm-2026-01-09
+          retrieval_date: '2026-11-23'
+          source_label: Von Hippel-Lindau syndrome
+      resolution_chains:
+      - id: mondoai:rc/82d8ad5a62a5
+        type: ResolutionChain
+        entity_slot: subject
+        date: '2026-11-23'
+        specified_by:
+        - mondoai:method/sssom-normalization
+        chain_confidence: 1.0
+        steps:
+        - id: mondoai:rc/82d8ad5a62a5-1
+          type: AlignmentStep
+          category: NORMALIZATION
+          method: DETERMINISTIC_RULE
+          input_value: ICD10CM:Q85.83
+          output_value: MONDO:0008667
+          predicate: skos:exactMatch
+          mapping_set: http://purl.obolibrary.org/obo/mondo/mappings/mondo.sssom.tsv
+          mapping_set_version: '2026-11-03'
+          quality_category: normalization_curated
+          confidence: 1.0
+          confidence_basis: DETERMINISTIC
+          mapping_justification: semapv:UnspecifiedMatching
+    direction_of_evidence_provided: supports
+    score_of_evidence_provided: 0.8
+    computed_by_rule: mondoai:rule/synonym-v1.0
+    independence_cluster: infores:icd10cm
+    date_attached: '2026-11-23'
+    last_confirmed: '2026-11-23'
+    contributions:
+    - id: mondoai:el/05b667e04d79-icd10cm#act
+      type: InterpretationActivity
+      contributor: mondoai:agent/concordance-pipeline
+      role: INTERPRETER
+      date: '2026-11-23'
+      method_type: RULE_BASED_STRENGTH
+      specified_by:
+      - mondoai:method/source-concordance
+      read_coverage: STRUCTURED_RECORD
+    strength_of_evidence_provided: strong
+    last_confirmed_against: mondoai:release/icd10cm-2026-01-09
+  score: 0.9803
+  strength: strong
+  direction: supports
+reference_snapshot:
+  id: mondoai:pkt/05b667e04d79#references
+  type: SieveRegistry
+  version: '2026-11-23'
+  resources:
+  - id: infores:omim
+    type: InformationResource
+    label: OMIM
+    curie_prefixes:
+    - OMIM
+    - OMIMPS
+    default_role: PRIMARY
+    quality_ratings:
+    - level: 0.9
+      valid_from: '2026-01-01'
+  - id: infores:orphanet
+    type: InformationResource
+    label: Orphanet Rare Disease Ontology
+    curie_prefixes:
+    - Orphanet
+    default_role: PRIMARY
+    quality_ratings:
+    - level: 0.9
+      valid_from: '2026-01-01'
+  - id: infores:disease-ontology
+    type: InformationResource
+    label: Disease Ontology
+    curie_prefixes:
+    - DOID
+    default_role: PRIMARY
+    derives_content_from:
+    - infores:omim
+    quality_ratings:
+    - level: 0.8
+      valid_from: '2026-01-01'
+  - id: infores:icd10cm
+    type: InformationResource
+    label: ICD-10-CM
+    curie_prefixes:
+    - ICD10CM
+    default_role: PRIMARY
+    quality_ratings:
+    - level: 0.8
+      valid_from: '2026-01-01'
+  releases:
+  - id: mondoai:release/omim-2026-11-18
+    type: SourceRelease
+    of_resource: infores:omim
+    version: '2026-11-18'
+  - id: mondoai:release/ordo-4.9
+    type: SourceRelease
+    of_resource: infores:orphanet
+    version: '4.9'
+  - id: mondoai:release/doid-2026-10-29
+    type: SourceRelease
+    of_resource: infores:disease-ontology
+    version: '2026-10-29'
+  - id: mondoai:release/icd10cm-2026-01-09
+    type: SourceRelease
+    of_resource: infores:icd10cm
+    version: '2026-01-09'
+  agents:
+  - id: mondoai:agent/concordance-pipeline
+    type: SieveAgent
+    subtype: software
+    name: mondo-ai source concordance pipeline
+    software_version: 0.0.0
+  methods:
+  - id: mondoai:method/source-concordance
+    type: SieveMethod
+    label: 'Source concordance: a source''s own claim, normalized to Mondo ids, read
+      as evidence'
+    version: '2.0'
+  - id: mondoai:method/sssom-normalization
+    type: SieveMethod
+    label: Normalization of source ids to Mondo ids by the skos:exactMatch rows of
+      mondo.sssom.tsv
+    version: '1.0'
+  aggregation_rules:
+  - id: mondoai:rule/synonym-v1.0
+    type: AggregationRule
+    version: '1.0'
+    claim_type: SynonymStatement
+    strength_bands:
+    - strong >= 0.8
+    - moderate >= 0.4
+    - weak < 0.4
+    confidence_floor: 0.3
+    scaling_factor: 2.0
+    default_quality: 0.5
+    stacked_lines: CAP_AND_ADD
+    claim_priors:
+    - channel: SOURCE_INGEST
+      log_odds: 0.0
+    exclusive: true
+    exclusivity_rule: An exact synonym belongs to one live term per branch; abbreviations
+      are exempt.
