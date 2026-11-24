@@ -467,8 +467,8 @@ def make_boxes(
         return (first, pair[0], pair[1])
 
     pieces: list[tuple[list[tuple[str, str]], str]] = []
-    work = [(group, frozenset(), "")
-            for group in cycle_components(sorted(set(pairs)), subjects, objects)]
+    work: list[tuple[list[tuple[str, str]], frozenset[str], str]] = [
+        (group, frozenset(), "") for group in cycle_components(sorted(set(pairs)), subjects, objects)]
     while work:
         group, hubs, cut = work.pop()
         if len(group) <= max_box:
@@ -801,16 +801,17 @@ def condition(
     done = {"n": 0}
 
     def run_one(i: int, members: list[Box]) -> BinResult:
-        kw = dict(subject_iri=subject_iri, object_iri=object_iri, cfg=bcfg,
-                  timeout=rcfg.bin_timeout_seconds)
-        result = solve_bin(work / f"bin{i:04d}", members, priors, predicates, subjects,
-                           objects, **kw)
+        def solve(path: Path, bin_boxes: list[Box]) -> BinResult:
+            return solve_bin(path, bin_boxes, priors, predicates, subjects, objects,
+                             subject_iri=subject_iri, object_iri=object_iri, cfg=bcfg,
+                             timeout=rcfg.bin_timeout_seconds)
+
+        result = solve(work / f"bin{i:04d}", members)
         if result.failed and len(members) > 1:
             # One unsolvable or slow box should not take its bin-mates down with it.
             retry = BinResult(seconds=result.seconds, invocations=result.invocations)
             for box in members:
-                one = solve_bin(work / f"bin{i:04d}" / box.id, [box], priors, predicates,
-                                subjects, objects, **kw)
+                one = solve(work / f"bin{i:04d}" / box.id, [box])
                 retry.cells.update(one.cells)
                 retry.verdicts.update(one.verdicts)
                 retry.failed.update(one.failed)
@@ -1229,7 +1230,7 @@ class ReviewRunner:
         failed: dict[tuple[str, str], str] = {}
         boxes_by_pair: dict[tuple[str, str], Box] = {}
         if cfg.boomer.enabled:
-            priors = {
+            priors: dict[tuple[str, str], tuple[float, ...]] = {
                 (m.subject_id, m.object_id): bm.priors_for(
                     m.predicate_id, min(m.confidence, MAX_PRIOR))
                 for m in mappings
@@ -1408,7 +1409,7 @@ class ReviewRunner:
             v = verdicts.get(mapping_id(*pair))
             if v is not None:
                 reviewer_predicate = RELATION_PREDICATE[v.relation]
-                confidence = v.confidence
+                confidence: float | None = v.confidence
                 if predicate != m.predicate_id:
                     # The model judged the pair's first predicate; for another predicate on
                     # the same pair only its relation call carries over, not its probability.

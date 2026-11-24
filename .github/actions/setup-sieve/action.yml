@@ -1,0 +1,28 @@
+name: Check out sieve
+description: >-
+  Check out matentzn/sieve next to the repository, where the editable path dependency
+  in pyproject.toml (../sieve) expects it. The ref is the sieve commit that
+  src/mondo_ai/schema/sieve.yaml is copied from; tests/test_datamodel_contract.py fails
+  when the two differ, so bump it whenever the schema is re-vendored.
+
+inputs:
+  ref:
+    description: sieve commit to check out
+    default: 7d94a10607e919366eb04d15c21003db1917f8fd
+
+runs:
+  using: composite
+  steps:
+    # actions/checkout only writes inside the workspace, so check out there and move it
+    # out: inside the workspace it would also be linted by `ruff check .`.
+    - name: Check out sieve
+      uses: actions/checkout@v4.2.2
+      with:
+        repository: matentzn/sieve
+        ref: ${{ inputs.ref }}
+        path: .sieve
+        persist-credentials: false
+
+    - name: Move sieve next to the repository
+      shell: bash
+      run: mv "$GITHUB_WORKSPACE/.sieve" "$GITHUB_WORKSPACE/../sieve"

@@ -48,6 +48,9 @@ jobs:
         run: |
           uv tool install rust-just
 
+      - name: Check out sieve
+        uses: ./.github/actions/setup-sieve
+
       - name: Install project
         run: uv sync --dev
 

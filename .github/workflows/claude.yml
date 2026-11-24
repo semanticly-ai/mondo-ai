@@ -5,15 +5,18 @@
 # Author: Chris Mungall (@cmungall)
 name: Claude Code
 
+# Manual only: the triggers are off until the repository has CLAUDE_CODE_OAUTH_TOKEN.
+# To turn it back on:
+#   issue_comment:
+#     types: [created]
+#   pull_request_review_comment:
+#     types: [created]
+#   issues:
+#     types: [opened, assigned]
+#   pull_request_review:
+#     types: [submitted]
 on:
-  issue_comment:
-    types: [created]
-  pull_request_review_comment:
-    types: [created]
-  issues:
-    types: [opened, assigned]
-  pull_request_review:
-    types: [submitted]
+  workflow_dispatch:
 
 jobs:
   claude:
@@ -29,20 +32,35 @@ jobs:
       issues: write
       id-token: write
       actions: read # Required for Claude to read CI results on PRs
+    # Secrets cannot be read in a job-level `if`; the steps below check this instead.
+    env:
+      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
     steps:
+      - name: Skip without a Claude token
+        if: env.CLAUDE_CODE_OAUTH_TOKEN == ''
+        run: echo "::notice::CLAUDE_CODE_OAUTH_TOKEN is not set; skipping Claude."
+
       - name: Checkout repository
+        if: env.CLAUDE_CODE_OAUTH_TOKEN != ''
         uses: actions/checkout@v4
         with:
           fetch-depth: 1
 
+      - name: Check out sieve
+        if: env.CLAUDE_CODE_OAUTH_TOKEN != ''
+        uses: ./.github/actions/setup-sieve
+
       - name: Install uv
+        if: env.CLAUDE_CODE_OAUTH_TOKEN != ''
         uses: astral-sh/setup-uv@v5
-            
+
       - name: Install python tools
+        if: env.CLAUDE_CODE_OAUTH_TOKEN != ''
         run: |
           uv sync
 
       - name: Run Claude Code
+        if: env.CLAUDE_CODE_OAUTH_TOKEN != ''
         id: claude
         uses: anthropics/claude-code-action@beta
         

@@ -187,6 +187,22 @@ docs site's evidence browser.
 snapshots and require every packet to pass sieve's profile checks and the LinkML schema.
 Network (PubMed) and LLM tests skip without credentials.
 
+**CI** (`.github/workflows/`). `main.yaml` runs `just test` on Python 3.10 to 3.13 for every
+push to main and every PR; `deploy-docs.yaml` exports `docs/evidence/data.json` from the
+committed `packet_store_merged/` and deploys the mkdocs site on push to main.
+
+- sieve is an editable path dependency (`../sieve` in `[tool.uv.sources]`), so every
+  workflow that runs `uv sync` first uses `.github/actions/setup-sieve`, which checks out
+  matentzn/sieve next to the repository at a pinned commit. The pin is the sieve commit the
+  vendored `schema/sieve.yaml` is copied from: `tests/test_datamodel_contract.py` compares
+  the two byte for byte, so CI fails until the pin is bumped with each re-vendoring.
+- The AI workflows (`claude.yml`, `claude-code-review.yml`, `claude-issue-*.yml`,
+  `dragon-ai.yml`) run only by `workflow_dispatch`: semanticly-ai/mondo-ai has none of
+  their secrets (`CLAUDE_CODE_OAUTH_TOKEN`, `ANTHROPIC_API_KEY`, `PAT_FOR_PR`). Each file
+  keeps its original triggers in a comment. Run with a secret missing, the Claude and
+  issue workflows skip with a notice, and Dragon AI's mention check falls back to the
+  default token; answering a mention still needs `PAT_FOR_PR`.
+
 ## 12. Known limitations
 
 - Rule parameters, source weights and quality ratings are illustrative (as in sieve's
@@ -198,3 +214,7 @@ Network (PubMed) and LLM tests skip without credentials.
 - OMIM and ICD-10-CM are the Monarch/Mondo builds of those sources (no OWL comes from OMIM
   or CDC); ICD-10-CM synonyms typed `mondo#GENERATED_FROM_LABEL` are labels mondo-ingest
   derived, recorded as such in `generation_context`.
+- mondo-ai cannot be published to PyPI as is: the wheel declares a bare `sieve`
+  dependency, and `sieve` on PyPI is an unrelated package (XML comparison utils), so
+  `pip install mondo-ai` would install the wrong one. `pypi-publish.yaml` builds, but the
+  result does not install correctly (semanticly-ai/mondo-ai#7).
