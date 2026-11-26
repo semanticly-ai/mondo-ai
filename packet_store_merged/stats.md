@@ -1,68 +1,92 @@
 # Evidence Packet Statistics
 
-*Generated: 2026-08-16 23:15:23*
+*Generated: 2026-11-23 09:51:38*
 
 ## Summary
 
 | Metric | Count |
 |--------|------:|
-| Total packets | 6,495 |
-| Total evidence lines | 6,503 |
-| Total evidence items | 6,503 |
-| Unique Mondo subjects | 2,975 |
+| Total packets | 109,541 |
+| Total evidence lines | 143,649 |
+| Total evidence items | 172,376 |
+| Unique Mondo subjects | 19,934 |
+
+## By Claim Type
+
+| Claim type | Count | % |
+|--------|------:|---:|
+| SynonymStatement | 48,071 | 43.9% |
+| MappingStatement | 32,646 | 29.8% |
+| SubclassStatement | 28,824 | 26.3% |
 
 ## By Statement Predicate
 
 | Predicate | Count | % |
 |--------|------:|---:|
-| exact synonym | 6,367 | 98.0% |
-| related synonym | 124 | 1.9% |
-| narrow synonym | 3 | 0.0% |
-| broad synonym | 1 | 0.0% |
+| has exact synonym | 47,059 | 43.0% |
+| exact match | 32,586 | 29.7% |
+| subclass of | 28,824 | 26.3% |
+| has related synonym | 895 | 0.8% |
+| has narrow synonym | 83 | 0.1% |
+| narrow match | 42 | 0.0% |
+| has broad synonym | 34 | 0.0% |
+| broad match | 18 | 0.0% |
 
-## By Source
+## By Review State
+
+| Review state | Count | % |
+|--------|------:|---:|
+| NOT_VERIFIED | 71,711 | 65.5% |
+| PENDING_REVIEW | 37,830 | 34.5% |
+
+## Inclusion Score
+
+| S | Count | % |
+|--------|------:|---:|
+| 0.4 <= S < 0.8 | 90,211 | 82.4% |
+| S >= 0.8 | 13,835 | 12.6% |
+| 0 < S < 0.4 | 5,172 | 4.7% |
+| S <= 0 | 323 | 0.3% |
+
+## Evidence Lines by Source
 
 | Source | Count | % |
 |--------|------:|---:|
-| doid | 2,615 | 40.2% |
-| ordo | 2,050 | 31.5% |
-| omim | 1,838 | 28.3% |
+| infores:disease-ontology | 55,801 | 38.8% |
+| infores:orphanet | 42,602 | 29.7% |
+| infores:omim | 39,627 | 27.6% |
+| infores:icd10cm | 5,619 | 3.9% |
 
-## By Curation Status
-
-| Status | Count | % |
-|--------|------:|---:|
-| UNREVIEWED | 6,495 | 100.0% |
-
-## By Evidence Direction
+## Evidence Lines by Direction
 
 | Direction | Count | % |
 |--------|------:|---:|
-| supports | 6,503 | 100.0% |
+| supports | 143,195 | 99.7% |
+| disputes | 454 | 0.3% |
 
-## By Evidence Strength
+## Evidence Lines by Strength
 
 | Strength | Count | % |
 |--------|------:|---:|
-| strong | 6,375 | 98.0% |
-| moderate | 128 | 2.0% |
+| strong | 99,458 | 69.2% |
+| moderate | 44,191 | 30.8% |
 
 ## By Evidence Item Type
 
 | Type | Count | % |
 |--------|------:|---:|
-| ConcordanceItem | 6,503 | 100.0% |
-
-## Score Distribution
-
-| Bucket | Count | % |
-|--------|------:|---:|
-| high (>= 0.8) | 6,375 | 98.0% |
-| medium (0.5 - 0.8) | 128 | 2.0% |
+| SynonymStatement | 56,391 | 32.7% |
+| SubclassStatement | 32,869 | 19.1% |
+| ExternalRecord | 28,859 | 16.7% |
+| ComputationalScore | 28,624 | 16.6% |
+| MappingStatement | 25,633 | 14.9% |
 
 ## Evidence Lines per Packet
 
 | Evidence Lines | Count | % |
 |--------|------:|---:|
-| 1 | 6,487 | 99.9% |
-| 2 | 8 | 0.1% |
+| 1 | 83,251 | 76.0% |
+| 2 | 19,739 | 18.0% |
+| 3 | 5,284 | 4.8% |
+| 4 | 1,267 | 1.2% |
+

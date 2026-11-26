@@ -1,166 +1,180 @@
-"""Prompt templates for the evidence synthesis agent.
+"""Prompts for the evidence synthesis agent.
 
-This module contains prompt templates for the AI agent that synthesizes
-evidence and generates recommendations for ontology curation.
+The agent reads one packet: the claim, its evidence lines (each a source's own claim,
+record or score, already read by a rule) and the Publications attached to the claim. It
+returns its own judgement of how the evidence bears on the claim: a direction, a
+strength, its confidence and a short rationale. It does not decide anything; a curator
+signs off.
+
+Everything is formatted from the packet dict (the SIEVE profile shape).
 """
 
-SYSTEM_PROMPT = """You are an expert ontology curator specializing in the Mondo Disease Ontology.
-Your task is to analyze evidence packets and recommend whether assertions should be:
-- ADD: Added to the ontology (for new, well-supported statements)
-- CONFIRM: Confirmed as correct (for existing statements with supporting evidence)
-- REJECT: Not added/removed (for statements with contradicting or insufficient evidence)
-- REVIEW: Flagged for human review (for controversial or ambiguous cases)
+from typing import Any, Mapping
 
-When analyzing evidence, consider:
-1. The type and strength of each evidence item
-2. Whether evidence supports or contradicts the assertion
-3. The reliability of sources (concordance from major ontologies is strong)
-4. Any literature evidence and its relevance
-5. The overall balance of evidence
+PROMPT_VERSION = "2.0"
 
-Be concise but thorough in your rationale. Cite specific evidence items by ID."""
+SYSTEM_PROMPT = """You are an expert ontology curator for the Mondo Disease Ontology.
+You read the evidence for one claim about a Mondo term (a synonym, a parent class or a
+mapping) and judge how the evidence, taken together, bears on the claim.
 
-SYNTHESIS_PROMPT_TEMPLATE = """Analyze the following evidence packet and provide a recommendation.
+Each evidence line is a source's own statement (in the source's ids, normalized to Mondo ids),
+a source record, or a computed score, already rated by a rule. Publications are attached
+but nobody has read them as evidence yet.
 
-## Statement
-- Subject: {subject_label} ({subject_id})
+Judge:
+- direction: "supports" or "disputes" the claim;
+- strength: 0-1, how strongly the evidence you read bears on the claim in that direction;
+- confidence: 0-1, how sure you are that you read and linked the evidence correctly;
+- rationale: one or two sentences;
+- cited_ids: the ids of the lines and publications you relied on, only ids shown to you.
+
+Consider whether sources are independent, whether a publication is about the claim's
+terms at all, and whether a record is obsolete. You give a judgement, not a decision:
+a curator decides."""
+
+SYNTHESIS_PROMPT_TEMPLATE = """Judge the evidence for this claim.
+
+## Claim
+- Statement: {statement_text}
+- Type: {claim_type}
+- Subject: {subject}
 - Predicate: {predicate}
 - Object: {object_value}
+- Review state: {review_state}
+- Current inclusion score S (-1 to 1, from the evidence lines): {score}
 
-## Evidence Lines
+## Evidence lines
 {evidence_section}
 
-## Current Score
-Net Evidence Ratio: {evidence_score}
-
----
-
-Based on this evidence, provide:
-1. Your recommended action (ADD, CONFIRM, REJECT, or REVIEW)
-2. Your confidence (0-1)
-3. A brief summary synthesizing your analysis and recommendation
-4. List any evidence IDs that most strongly support your recommendation
-
-Respond in the following JSON format:
-{{
-  "action": "ADD|CONFIRM|REJECT|REVIEW",
-  "confidence": 0.0-1.0,
-  "summary": "Your synthesis explaining the evidence and recommendation",
-  "key_evidence": ["ev_id_1", "ev_id_2"]
-}}"""
+## Publications
+{publication_section}
+"""
 
 
-def format_evidence_line(line) -> str:
-    """Format a single evidence line for the prompt.
+def _record_label(item: dict[str, Any]) -> str | None:
+    """The label of the first record a prior claim is reported in."""
+    for record in item.get("reported_in") or []:
+        if record.get("label"):
+            return str(record["label"])
+    return None
 
-    Args:
-        line: A SieveEvidenceLine object.
 
-    Returns:
-        Formatted string for the prompt.
+def format_item(item: dict[str, Any]) -> str:
+    """One evidence item as a prompt line.
+
+    >>> format_item({"id": "pc1", "type": "SynonymStatement", "subject": "DOID:1",
+    ...              "predicate": {"code": "oboInOwl:hasExactSynonym", "label": "has exact synonym"},
+    ...              "object": "CF", "resource": "infores:disease-ontology",
+    ...              "reported_in": [{"id": "DOID:1", "type": "ExternalRecord", "label": "cystic fibrosis"}]})
+    "- SynonymStatement pc1 from infores:disease-ontology: DOID:1 has exact synonym CF (record label 'cystic fibrosis')"
+    >>> format_item({"id": "cs1", "type": "ComputationalScore", "value": "1.0", "parameters": "label=label"})
+    '- ComputationalScore cs1: value 1.0 (label=label)'
     """
-    output = []
-    output.append(f"### Evidence Line: {line.id}")
-    output.append(f"- Direction: {line.direction_of_evidence_provided or 'supports'}")
-    output.append(f"- Strength: {line.strength_of_evidence_provided or 'moderate'}")
-    output.append(f"- Score: {line.score_of_evidence_provided or 1.0}")
-
-    # Format evidence items within this line
-    if line.has_evidence_items:
-        for item in line.has_evidence_items:
-            output.append(f"\n  #### Evidence Item: {item.id}")
-
-            # Get item type
-            item_type = getattr(item, "evidence_item_type", None)
-            if item_type:
-                if hasattr(item_type, "value"):
-                    item_type = item_type.value
-                output.append(f"  - Type: {item_type}")
-
-            # Description
-            if hasattr(item, "description") and item.description:
-                output.append(f"  - Description: {item.description}")
-
-            # ConcordanceItem fields
-            if hasattr(item, "source_name") and item.source_name:
-                output.append(f"  - Source: {item.source_name}")
-            if hasattr(item, "source_subject") and item.source_subject:
-                output.append(f"  - Source Subject: {item.source_subject}")
-            if hasattr(item, "source_subject_label") and item.source_subject_label:
-                output.append(f"  - Source Label: {item.source_subject_label}")
-
-            # SieveDocument fields
-            if hasattr(item, "title") and item.title:
-                output.append(f"  - Title: {item.title}")
-            if hasattr(item, "pmid") and item.pmid:
-                output.append(f"  - PMID: {item.pmid}")
-            if hasattr(item, "quote") and item.quote:
-                quote = item.quote[:200] + "..." if len(item.quote) > 200 else item.quote
-                output.append(f"  - Quote: \"{quote}\"")
-
-    output.append("")
-    return "\n".join(output)
+    kind, item_id = item["type"], item["id"]
+    source = f" from {item['resource']}" if item.get("resource") else ""
+    if kind == "ExternalRecord":
+        label = f" '{item['label']}'" if item.get("label") else ""
+        obsolete = " (obsolete in source)" if item.get("obsolete_in_source") else ""
+        return f"- ExternalRecord {item_id}{source}:{label}{obsolete}"
+    if kind == "ComputationalScore":
+        parameters = f" ({item['parameters']})" if item.get("parameters") else ""
+        return f"- ComputationalScore {item_id}: value {item.get('value')}{parameters}"
+    if kind == "Publication":
+        return f"- Publication {item_id}: {item.get('label') or 'untitled'}"
+    if kind == "SieveEvidenceLine":
+        return f"- Evidence line {item_id}: {item.get('direction_of_evidence_provided')}, score {item.get('score_of_evidence_provided')}"
+    predicate = (item.get("predicate") or {}).get("label") or (
+        item.get("predicate") or {}
+    ).get("code")
+    record = _record_label(item)
+    record_text = f" (record label '{record}')" if record else ""
+    return f"- {kind} {item_id}{source}: {item.get('subject')} {predicate} {item.get('object')}{record_text}"
 
 
-def format_evidence_section(evidence_lines: list | None) -> str:
-    """Format all evidence lines for the prompt.
+def format_evidence_line(line: dict[str, Any]) -> str:
+    """One evidence line: its id, direction, strength, score and items."""
+    out = [
+        f"### {line['id']}",
+        f"Direction: {line['direction_of_evidence_provided']}; "
+        f"strength: {line.get('strength_of_evidence_provided', 'not banded')}; "
+        f"score: {line.get('score_of_evidence_provided', 'none')}",
+    ]
+    if line.get("description"):
+        out.append(f"Description: {line['description']}")
+    out += [format_item(item) for item in line.get("has_evidence_items") or []]
+    return "\n".join(out)
 
-    Args:
-        evidence_lines: List of SieveEvidenceLine objects.
 
-    Returns:
-        Formatted string for the prompt.
+def format_evidence_section(lines: list[dict[str, Any]]) -> str:
+    """All evidence lines for the prompt.
+
+    >>> format_evidence_section([])
+    '*No evidence lines*'
     """
-    if not evidence_lines:
+    if not lines:
         return "*No evidence lines*"
+    return "\n\n".join(format_evidence_line(line) for line in lines)
 
-    return "\n".join(format_evidence_line(line) for line in evidence_lines)
+
+def format_publications(
+    publications: list[dict[str, Any]], abstracts: Mapping[str, str] | None = None
+) -> str:
+    """The attached Publications: id, title and the cached abstract when there is one.
+
+    >>> format_publications([])
+    '*No publications*'
+    >>> print(format_publications([{"id": "PMID:1", "type": "Publication", "label": "On CF"}], {"PMID:1": "Text."}))
+    ### PMID:1
+    Title: On CF
+    Abstract: Text.
+    """
+    if not publications:
+        return "*No publications*"
+    abstracts = abstracts or {}
+    blocks = []
+    for pub in publications:
+        abstract = abstracts.get(pub["id"]) or "*No abstract available*"
+        blocks.append(
+            f"### {pub['id']}\nTitle: {pub.get('label') or 'untitled'}\nAbstract: {abstract}"
+        )
+    return "\n\n".join(blocks)
 
 
-def build_synthesis_prompt(packet) -> str:
-    """Build the synthesis prompt for a packet.
+def build_synthesis_prompt(
+    packet: dict[str, Any],
+    lines: list[dict[str, Any]] | None = None,
+    publications: list[dict[str, Any]] | None = None,
+    abstracts: Mapping[str, str] | None = None,
+) -> str:
+    """The synthesis prompt for one packet.
 
     Args:
-        packet: The evidence packet to analyze.
+        packet: The packet.
+        lines: The lines to show (default: all the statement's lines).
+        publications: The Publications to show (default: those in ``statement.has_evidence``).
+        abstracts: Cached abstracts by Publication id.
 
     Returns:
-        The formatted prompt string.
+        The prompt.
     """
-    # Get predicate from Coding object
-    predicate = packet.statement.predicate
-    if predicate:
-        if hasattr(predicate, "label") and predicate.label:
-            predicate = predicate.label
-        elif hasattr(predicate, "code") and predicate.code:
-            predicate = predicate.code
-        elif hasattr(predicate, "value"):
-            predicate = predicate.value
-    else:
-        predicate = "unknown"
-
-    # Get current evidence score from synthesis if available
-    evidence_score: float = 0.0
-    if packet.evidence_synthesis and packet.evidence_synthesis.score:
-        evidence_score = packet.evidence_synthesis.score.value or 0.0
-    else:
-        # Calculate basic score from evidence lines
-        if packet.has_evidence_lines:
-            total = sum(
-                line.score_of_evidence_provided or 1.0
-                for line in packet.has_evidence_lines
-                if line.direction_of_evidence_provided == "supports"
-            )
-            count = len(packet.has_evidence_lines)
-            evidence_score = total / count if count else 0
-
-    # Format evidence section
-    evidence_section = format_evidence_section(packet.has_evidence_lines)
-
+    statement = packet["statement"]
+    if lines is None:
+        lines = list(statement.get("has_evidence_lines") or [])
+    if publications is None:
+        publications = [
+            i
+            for i in statement.get("has_evidence") or []
+            if i.get("type") == "Publication"
+        ]
+    predicate = statement.get("predicate") or {}
     return SYNTHESIS_PROMPT_TEMPLATE.format(
-        subject_label=packet.statement.subject_label or "Unknown",
-        subject_id=packet.statement.subject or "",
-        predicate=predicate,
-        object_value=packet.statement.object or "",
-        evidence_section=evidence_section,
-        evidence_score=round(evidence_score, 3),
+        statement_text=statement.get("statement_text", ""),
+        claim_type=statement["type"],
+        subject=statement["subject"],
+        predicate=predicate.get("label") or predicate.get("code", ""),
+        object_value=statement.get("object", ""),
+        review_state=statement.get("review_state", ""),
+        score=statement.get("score", 0.0),
+        evidence_section=format_evidence_section(lines),
+        publication_section=format_publications(publications, abstracts),
     )

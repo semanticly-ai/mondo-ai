@@ -1,711 +1,233 @@
-"""Mondo-specific extraction with evidence provenance.
+"""Curator and publication provenance on Mondo's own axioms.
 
-This module extracts entities from Mondo with rich provenance:
-- Organizational decision (consortium inclusion)
-- Expert determination (ORCID in source)
-- Candidate literature (PMID in source)
+Mondo annotates its axioms with where they came from: the curator (an ORCID, written as
+an ``https://orcid.org/`` URL) and sometimes a publication (``PMID:``). In the SIEVE
+profile Mondo's own assertion is not evidence for itself, but who curated it and what
+it cites are: :mod:`mondo_ai.packets.mondo_provenance` turns them into curator
+contributions and publications on the packets of claims already in Mondo.
+
+This module reads that provenance in bulk, one SPARQL query per kind of axiom (a
+per-entity loop is far too slow for the 255 MB mondo.owl):
+
+- synonyms (``oboInOwl:has{Exact,Related,Narrow,Broad}Synonym``), annotated with
+  ``oboInOwl:hasDbXref`` (and occasionally ``oboInOwl:source``);
+- named-parent ``rdfs:subClassOf`` axioms, annotated with ``oboInOwl:source``;
+- skos mappings (``skos:exactMatch`` etc.). Mondo does not annotate the skos triples
+  themselves: their provenance is on the ``oboInOwl:hasDbXref`` axiom for the same
+  target (``oboInOwl:source MONDO:equivalentTo`` plus the curator), so each skos triple
+  takes the provenance of its xref axiom, and of the skos axiom if there is one.
+
+The result is a plain dict keyed by ``(subject, predicate CURIE, object)``, the shape of a
+packet's claim; synonym objects are casefolded. Only axioms with at least one ORCID or
+PMID are kept.
 
 Example:
-    >>> from mondo_ai.extraction.mondo_extractor import MondoExtractor
-    >>> extractor = MondoExtractor()
-    >>> snapshot = extractor.extract("path/to/mondo.owl")  # doctest: +SKIP
+    >>> prov = MondoProvenanceExtractor().extract("data/owl/2026-11-20/mondo.owl")  # doctest: +SKIP
+    >>> prov[("MONDO:0000005", "rdfs:subClassOf", "MONDO:0100118")]  # doctest: +SKIP
+    AxiomProvenance(orcids=('0000-0002-5002-8648',), pmids=())
 """
 
 import re
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from hashlib import sha256
+from collections import defaultdict
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterator
 
-import curies
 import pyoxigraph as px
 
-from mondo_ai.datamodel import (
-    Agent,
-    AgentContribution,
-    Coding,
-    ContributionType,
-    EntitySnapshot,
-    EvidenceDirection,
-    EvidenceItemType,
-    EvidenceStrength,
-    ResourceSnapshot,
-    SieveDocument,
-    SieveEvidenceLine,
-    Synonym,
-    SynonymScope,
-    TrustLevel,
+from mondo_ai.extraction.owl_extractor import (
+    OBO_IN_OWL,
+    SKOS,
+    _curie_from_iri,
+    _get_converter,
+    _value,
+    extract_provenance_from_sources,
+    normalize_xref,
 )
 
-# OWL/RDF namespaces
-RDFS_LABEL = "http://www.w3.org/2000/01/rdf-schema#label"
+MONDO_IRI_PREFIX = "http://purl.obolibrary.org/obo/MONDO_"
 RDFS_SUBCLASS_OF = "http://www.w3.org/2000/01/rdf-schema#subClassOf"
-OWL_DEPRECATED = "http://www.w3.org/2002/07/owl#deprecated"
-OWL_ONTOLOGY = "http://www.w3.org/2002/07/owl#Ontology"
-OWL_VERSION_IRI = "http://www.w3.org/2002/07/owl#versionIRI"
-OWL_VERSION_INFO = "http://www.w3.org/2002/07/owl#versionInfo"
-OWL_AXIOM = "http://www.w3.org/2002/07/owl#Axiom"
-OWL_ANNOTATED_SOURCE = "http://www.w3.org/2002/07/owl#annotatedSource"
-OWL_ANNOTATED_PROPERTY = "http://www.w3.org/2002/07/owl#annotatedProperty"
-OWL_ANNOTATED_TARGET = "http://www.w3.org/2002/07/owl#annotatedTarget"
-OBO_IN_OWL = "http://www.geneontology.org/formats/oboInOwl#"
-IAO_DEFINITION = "http://purl.obolibrary.org/obo/IAO_0000115"
 HAS_DBXREF = f"{OBO_IN_OWL}hasDbXref"
 SOURCE = f"{OBO_IN_OWL}source"
 
-# Synonym predicates
 SYNONYM_PREDICATES = {
-    f"{OBO_IN_OWL}hasExactSynonym": SynonymScope.EXACT,
-    f"{OBO_IN_OWL}hasNarrowSynonym": SynonymScope.NARROW,
-    f"{OBO_IN_OWL}hasBroadSynonym": SynonymScope.BROAD,
-    f"{OBO_IN_OWL}hasRelatedSynonym": SynonymScope.RELATED,
+    f"{OBO_IN_OWL}hasExactSynonym": "oboInOwl:hasExactSynonym",
+    f"{OBO_IN_OWL}hasRelatedSynonym": "oboInOwl:hasRelatedSynonym",
+    f"{OBO_IN_OWL}hasNarrowSynonym": "oboInOwl:hasNarrowSynonym",
+    f"{OBO_IN_OWL}hasBroadSynonym": "oboInOwl:hasBroadSynonym",
+}
+SKOS_PREDICATES = {
+    f"{SKOS}exactMatch": "skos:exactMatch",
+    f"{SKOS}closeMatch": "skos:closeMatch",
+    f"{SKOS}broadMatch": "skos:broadMatch",
+    f"{SKOS}narrowMatch": "skos:narrowMatch",
+    f"{SKOS}relatedMatch": "skos:relatedMatch",
+}
+KIND_OF_PREDICATE = {
+    **{p: "synonym" for p in SYNONYM_PREDICATES.values()},
+    "rdfs:subClassOf": "subclass",
+    **{p: "mapping" for p in SKOS_PREDICATES.values()},
 }
 
-# Patterns for extracting ORCIDs and PMIDs
-ORCID_PATTERN = re.compile(r"ORCID:(\d{4}-\d{4}-\d{4}-\d{3}[\dX])", re.IGNORECASE)
-PMID_PATTERN = re.compile(r"PMID:(\d+)", re.IGNORECASE)
+AxiomKey = tuple[str, str, str]
 
-# Mondo consortium agent
-MONDO_CONSORTIUM = Agent(
-    id="mondo:consortium",
-    type="Agent",
-    name="Mondo Disease Ontology Consortium",
-    subtype="organization",
+_ORCID_URL = re.compile(r"https?://orcid\.org/", re.IGNORECASE)
+_PMID_SPACED = re.compile(r"PMID:\s+(\d)", re.IGNORECASE)
+_PUBMED_URL = re.compile(r"https?://(?:www\.)?(?:pubmed\.ncbi\.nlm\.nih\.gov|ncbi\.nlm\.nih\.gov/pubmed)/(\d+)", re.IGNORECASE)
+
+_PREFIXES = (
+    "PREFIX owl: <http://www.w3.org/2002/07/owl#> "
+    f"PREFIX oio: <{OBO_IN_OWL}> "
 )
+_MONDO_SUBJECT = f"FILTER(isIRI(?e) && STRSTARTS(STR(?e), '{MONDO_IRI_PREFIX}'))"
 
 
-@dataclass
-class AnnotationProvenance:
-    """Provenance information extracted from annotation sources.
+@dataclass(frozen=True)
+class AxiomProvenance:
+    """The curators (ORCIDs, bare ``0000-...``) and publications (PMIDs, bare numbers) on an axiom.
 
-    Attributes:
-        orcids: List of ORCID identifiers found.
-        pmids: List of PMID identifiers found.
-        raw_sources: Original source strings.
+    >>> bool(AxiomProvenance()), bool(AxiomProvenance(pmids=("1",)))
+    (False, True)
     """
 
-    orcids: list[str] = field(default_factory=list)
-    pmids: list[str] = field(default_factory=list)
-    raw_sources: list[str] = field(default_factory=list)
+    orcids: tuple[str, ...] = ()
+    pmids: tuple[str, ...] = ()
+
+    def __bool__(self) -> bool:
+        """True if the axiom names a curator or a publication."""
+        return bool(self.orcids or self.pmids)
 
 
-def _get_converter() -> curies.Converter:
-    """Get a CURIE converter with standard biomedical prefixes."""
-    return curies.get_obo_converter()
+def _normalise_source(value: str) -> str:
+    """Rewrite Mondo's ORCID and PubMed URLs (and ``PMID: n``) as the CURIEs the patterns read.
 
-
-def _curie_from_iri(iri: str, converter: curies.Converter | None = None) -> str:
-    """Convert IRI to CURIE format."""
-    if converter is None:
-        converter = _get_converter()
-
-    curie = converter.compress(iri)
-    if curie:
-        return curie
-
-    # Fallback for OBO PURLs
-    if "/obo/" in iri:
-        parts = iri.split("/obo/")[-1]
-        if "_" in parts:
-            prefix, local = parts.rsplit("_", 1)
-            return f"{prefix}:{local}"
-    return iri
-
-
-def create_consortium_evidence_line(
-    entity_id: str,
-    version: str,
-) -> SieveEvidenceLine:
-    """Create evidence line for Mondo consortium organizational decision.
-
-    Args:
-        entity_id: The Mondo entity ID (e.g., MONDO:0005015).
-        version: The Mondo version/release.
-
-    Returns:
-        SieveEvidenceLine with AgentContribution for consortium decision.
+    >>> _normalise_source("https://orcid.org/0000-0002-6601-2165")
+    'ORCID:0000-0002-6601-2165'
+    >>> _normalise_source("https://pubmed.ncbi.nlm.nih.gov/27745641")
+    'PMID:27745641'
+    >>> _normalise_source("PMID: 333")
+    'PMID:333'
     """
-    contribution = AgentContribution(
-        id=f"ev_consortium_{hash(entity_id) % 100000:05d}",
-        type="AgentContribution",
-        evidence_item_type=EvidenceItemType.AgentContribution,
-        contributor=MONDO_CONSORTIUM,
-        trust_level=TrustLevel.authority,
-        contribution_type=ContributionType.decision,
-        content="Term included in Mondo Disease Ontology",
-        reference=version,
-        description=f"Organizational decision: {entity_id} included in Mondo",
-    )
-
-    return SieveEvidenceLine(
-        id=f"el_consortium_{hash(entity_id) % 100000:05d}",
-        type="SieveEvidenceLine",
-        has_evidence_items=[contribution],
-        direction_of_evidence_provided=EvidenceDirection.supports.value,
-        strength_of_evidence_provided=EvidenceStrength.moderate.value,
-        score_of_evidence_provided=0.6,
-    )
+    value = _ORCID_URL.sub("ORCID:", value)
+    value = _PUBMED_URL.sub(r"PMID:\1", value)
+    return _PMID_SPACED.sub(r"PMID:\1", value)
 
 
-def create_expert_evidence_line(
-    orcid: str,
-    entity_id: str,
-    annotation_type: str = "synonym",
-) -> SieveEvidenceLine:
-    """Create evidence line for expert curator determination.
+def provenance_from_annotations(values: list[str]) -> AxiomProvenance:
+    """The ORCIDs and PMIDs named by an axiom's annotation values, in order, without duplicates.
 
-    Args:
-        orcid: The ORCID identifier (e.g., 0000-0001-5208-3432).
-        entity_id: The entity this annotation is about.
-        annotation_type: Type of annotation (synonym, definition, etc.).
-
-    Returns:
-        SieveEvidenceLine with AgentContribution for expert determination.
+    >>> provenance_from_annotations(["MONDO:equivalentTo", "https://orcid.org/0000-0002-6601-2165"])
+    AxiomProvenance(orcids=('0000-0002-6601-2165',), pmids=())
     """
-    orcid_curie = f"ORCID:{orcid}"
-    contribution = AgentContribution(
-        id=f"ev_expert_{hash(orcid + entity_id) % 100000:05d}",
-        type="AgentContribution",
-        evidence_item_type=EvidenceItemType.AgentContribution,
-        contributor=Agent(
-            id=orcid_curie,
-            type="Agent",
-            subtype="person",
-        ),
-        trust_level=TrustLevel.curator,
-        contribution_type=ContributionType.decision,
-        content=f"Expert curator determination for {annotation_type}",
-        description=f"Curator {orcid_curie} approved this {annotation_type}",
-    )
-
-    return SieveEvidenceLine(
-        id=f"el_expert_{hash(orcid + entity_id) % 100000:05d}",
-        type="SieveEvidenceLine",
-        has_evidence_items=[contribution],
-        direction_of_evidence_provided=EvidenceDirection.supports.value,
-        strength_of_evidence_provided=EvidenceStrength.strong.value,
-        score_of_evidence_provided=0.8,
-    )
+    orcids, pmids = extract_provenance_from_sources([_normalise_source(v) for v in values])
+    return AxiomProvenance(orcids=tuple(orcids), pmids=tuple(pmids))
 
 
-def create_candidate_literature_evidence_line(
-    pmid: str,
-    entity_id: str,
-) -> SieveEvidenceLine:
-    """Create evidence line for candidate (unverified) literature reference.
-
-    Args:
-        pmid: The PubMed ID (just the number).
-        entity_id: The entity this annotation is about.
-
-    Returns:
-        SieveEvidenceLine with SieveDocument marked as candidate.
-    """
-    # Use subtype Coding to mark as candidate/unverified
-    candidate_subtype = Coding(
-        code="candidate_reference",
-        label="Candidate Literature Reference",
-        system="mondo:evidence_status",
-    )
-
-    document = SieveDocument(
-        id=f"ev_lit_{pmid}_{hash(entity_id) % 100000:05d}",
-        type="SieveDocument",
-        pmid=pmid,
-        subtype=candidate_subtype,
-        urls=[f"https://pubmed.ncbi.nlm.nih.gov/{pmid}/"],
-        description=f"Candidate reference PMID:{pmid} (cited in source, not yet verified)",
-    )
-
-    return SieveEvidenceLine(
-        id=f"el_lit_{pmid}_{hash(entity_id) % 100000:05d}",
-        type="SieveEvidenceLine",
-        has_evidence_items=[document],
-        direction_of_evidence_provided=EvidenceDirection.supports.value,
-        strength_of_evidence_provided=EvidenceStrength.weak.value,
-        score_of_evidence_provided=0.4,
-    )
-
-
-def extract_provenance_from_sources(sources: list[str]) -> AnnotationProvenance:
-    """Extract ORCIDs and PMIDs from annotation source strings.
-
-    Args:
-        sources: List of source annotation values.
-
-    Returns:
-        AnnotationProvenance with extracted identifiers.
-
-    Example:
-        >>> sources = ["ORCID:0000-0001-5208-3432", "PMID:12345678"]
-        >>> prov = extract_provenance_from_sources(sources)
-        >>> prov.orcids
-        ['0000-0001-5208-3432']
-        >>> prov.pmids
-        ['12345678']
-    """
-    provenance = AnnotationProvenance(raw_sources=sources)
-
-    for source in sources:
-        # Extract ORCIDs
-        for match in ORCID_PATTERN.finditer(source):
-            orcid = match.group(1)
-            if orcid not in provenance.orcids:
-                provenance.orcids.append(orcid)
-
-        # Extract PMIDs
-        for match in PMID_PATTERN.finditer(source):
-            pmid = match.group(1)
-            if pmid not in provenance.pmids:
-                provenance.pmids.append(pmid)
-
-    return provenance
-
-
-class MondoExtractor:
-    """Extract entities from Mondo with rich provenance."""
+class MondoProvenanceExtractor:
+    """Read the ORCIDs and PMIDs on Mondo's synonym, subClassOf and mapping axioms."""
 
     def __init__(self) -> None:
-        """Initialize the extractor."""
+        """Create an extractor; the OWL file is loaded by :meth:`extract`."""
         self._store: px.Store | None = None
-        self._converter: curies.Converter | None = None
+        self._converter = _get_converter()
 
-    def _get_curie_converter(self) -> curies.Converter:
-        """Get or create the CURIE converter."""
-        if self._converter is None:
-            self._converter = _get_converter()
-        return self._converter
+    def _curie(self, iri: str) -> str:
+        return _curie_from_iri(iri, self._converter)
 
-    def _load_owl(self, path: Path) -> px.Store:
-        """Load OWL file into pyoxigraph store."""
-        store = px.Store()
-        content = path.read_bytes()
-        try:
-            store.load(content, format=px.RdfFormat.RDF_XML)
-        except Exception:
-            try:
-                store.load(content, format=px.RdfFormat.TURTLE)
-            except Exception:
-                store.load(content, format=px.RdfFormat.N_TRIPLES)
-        return store
-
-    def _query(self, sparql: str, variables: list[str] | None = None) -> Iterator[dict]:
-        """Execute SPARQL query and yield results as dicts."""
+    def _rows(self, sparql: str) -> Iterator[px.QuerySolution]:
         if self._store is None:
             raise RuntimeError("Store not loaded")
-
-        if variables is None:
-            import re
-
-            match = re.search(
-                r"SELECT\s+(?:DISTINCT\s+)?(.*?)\s+WHERE", sparql, re.IGNORECASE
-            )
-            if match:
-                var_str = match.group(1)
-                variables = [
-                    v.strip().lstrip("?") for v in var_str.split() if v.startswith("?")
-                ]
-            else:
-                variables = []
-
         result = self._store.query(sparql)
         assert isinstance(result, px.QuerySolutions)  # SELECT queries yield solutions
-        for solution in result:
-            row = {}
-            for var in variables:
-                try:
-                    row[var] = solution[var]
-                except KeyError:
-                    row[var] = None
-            yield row
+        yield from result
 
-    def _get_value(self, node) -> str | None:
-        """Extract string value from RDF node."""
-        if node is None:
-            return None
-        if hasattr(node, "value"):
-            return node.value
-        return str(node)
+    def _annotations(self, predicates: list[str], keys: list[str]) -> Iterator[tuple[str, str, str, str]]:
+        """(subject, predicate, target, annotation value) of every annotated axiom on a Mondo subject."""
+        preds = " ".join(f"<{p}>" for p in predicates)
+        props = " ".join(f"<{k}>" for k in keys)
+        for row in self._rows(
+            f"""{_PREFIXES} SELECT ?e ?p ?t ?v WHERE {{
+                VALUES ?p {{ {preds} }} VALUES ?k {{ {props} }}
+                ?ax owl:annotatedSource ?e ; owl:annotatedProperty ?p ; owl:annotatedTarget ?t ; ?k ?v .
+                {_MONDO_SUBJECT} }}"""
+        ):
+            yield _value(row["e"]), _value(row["p"]), _value(row["t"]), _value(row["v"])
 
-    def _get_version_iri(self) -> str | None:
-        """Extract the owl:versionIRI from the ontology."""
-        query = """
-        PREFIX owl: <http://www.w3.org/2002/07/owl#>
-        SELECT ?versionIRI WHERE {
-            ?ont a owl:Ontology .
-            ?ont owl:versionIRI ?versionIRI .
-        }
-        """
-        for row in self._query(query):
-            return self._get_value(row["versionIRI"])
-        return None
-
-    def _get_version_info(self) -> str | None:
-        """Extract the owl:versionInfo from the ontology (fallback)."""
-        query = """
-        PREFIX owl: <http://www.w3.org/2002/07/owl#>
-        SELECT ?versionInfo WHERE {
-            ?ont a owl:Ontology .
-            ?ont owl:versionInfo ?versionInfo .
-        }
-        """
-        for row in self._query(query):
-            return self._get_value(row["versionInfo"])
-        return None
-
-    def _get_annotation_sources(
-        self, entity_iri: str, property_iri: str, target_value: str
-    ) -> list[str]:
-        """Get source annotations for a specific axiom.
-
-        Finds reified axiom annotations where:
-        - owl:annotatedSource = entity_iri
-        - owl:annotatedProperty = property_iri
-        - owl:annotatedTarget = target_value
-        - oboInOwl:source = ?source
+    def extract(self, owl_path: str | Path) -> dict[AxiomKey, AxiomProvenance]:
+        """Load a Mondo OWL file (RDF/XML or Turtle) and read the provenance of its axioms.
 
         Args:
-            entity_iri: The entity IRI.
-            property_iri: The property IRI (e.g., hasExactSynonym).
-            target_value: The annotation target value.
+            owl_path: Path to mondo.owl.
 
         Returns:
-            List of source annotation values.
-        """
-        # Escape quotes in target value for SPARQL
-        escaped_target = target_value.replace('"', '\\"')
-
-        query = f"""
-        PREFIX owl: <http://www.w3.org/2002/07/owl#>
-        PREFIX oboInOwl: <http://www.geneontology.org/formats/oboInOwl#>
-
-        SELECT ?source WHERE {{
-            ?axiom a owl:Axiom .
-            ?axiom owl:annotatedSource <{entity_iri}> .
-            ?axiom owl:annotatedProperty <{property_iri}> .
-            ?axiom owl:annotatedTarget "{escaped_target}" .
-            ?axiom oboInOwl:source ?source .
-        }}
-        """
-        sources = []
-        for row in self._query(query):
-            source = self._get_value(row["source"])
-            if source:
-                sources.append(source)
-        return sources
-
-    def _get_definition_dbxrefs(self, entity_iri: str) -> list[str]:
-        """Get database xrefs from definition axiom annotations.
-
-        Args:
-            entity_iri: The entity IRI.
-
-        Returns:
-            List of dbxref values from the definition axiom.
-        """
-        query = f"""
-        PREFIX owl: <http://www.w3.org/2002/07/owl#>
-        PREFIX oboInOwl: <http://www.geneontology.org/formats/oboInOwl#>
-        PREFIX IAO: <http://purl.obolibrary.org/obo/IAO_>
-
-        SELECT ?xref WHERE {{
-            ?axiom a owl:Axiom .
-            ?axiom owl:annotatedSource <{entity_iri}> .
-            ?axiom owl:annotatedProperty IAO:0000115 .
-            ?axiom oboInOwl:hasDbXref ?xref .
-        }}
-        """
-        xrefs = []
-        for row in self._query(query):
-            xref = self._get_value(row["xref"])
-            if xref:
-                xrefs.append(xref)
-        return xrefs
-
-    def extract(
-        self,
-        owl_path: str | Path,
-        limit: int | None = None,
-        skip_deprecated: bool = True,
-    ) -> ResourceSnapshot:
-        """Extract entities from Mondo OWL file.
-
-        Args:
-            owl_path: Path to the Mondo OWL file.
-            limit: Maximum number of entities to extract.
-            skip_deprecated: Skip deprecated/obsolete entities.
-
-        Returns:
-            ResourceSnapshot with extracted entities.
+            ``(subject CURIE, predicate CURIE, object)`` -> provenance, for every synonym,
+            named-parent subClassOf and skos mapping axiom that names an ORCID or PMID.
+            Synonym objects are casefolded; mapping objects are the CURIEs Mondo writes
+            in its xrefs (``OMIM:219700``).
         """
         path = Path(owl_path)
-        self._store = self._load_owl(path)
+        store = px.Store()
+        fmt = px.RdfFormat.TURTLE if path.suffix in (".ttl", ".turtle") else px.RdfFormat.RDF_XML
+        store.bulk_load(path=str(path), format=fmt)
+        self._store = store
 
-        checksum = sha256(path.read_bytes()).hexdigest()
-        version = self._get_version_iri() or self._get_version_info() or "unknown"
+        sources: dict[AxiomKey, list[str]] = defaultdict(list)
+        self._read_synonyms(sources)
+        self._read_subclass(sources)
+        self._read_mappings(sources)
 
-        entities = list(
-            self._extract_entities(
-                version=version,
-                limit=limit,
-                skip_deprecated=skip_deprecated,
-            )
-        )
+        out: dict[AxiomKey, AxiomProvenance] = {}
+        for key, values in sources.items():
+            prov = provenance_from_annotations(values)
+            if prov:
+                out[key] = prov
+        return out
 
-        return ResourceSnapshot(
-            resource_id="mondo",
-            resource_name="Mondo Disease Ontology",
-            resource_url=str(path.absolute()),
-            version=version,
-            generated_at=datetime.now(timezone.utc),
-            checksum=checksum,
-            entity_count=len(entities),
-            entities=entities,
-        )
+    def _read_synonyms(self, sources: dict[AxiomKey, list[str]]) -> None:
+        for e, p, t, v in self._annotations(list(SYNONYM_PREDICATES), [HAS_DBXREF, SOURCE]):
+            sources[(self._curie(e), SYNONYM_PREDICATES[p], t.casefold())].append(v)
 
-    def _iter_entities_with_evidence(
-        self,
-        version: str,
-        limit: int | None = None,
-        skip_deprecated: bool = True,
-    ) -> Iterator[tuple[EntitySnapshot, list[SieveEvidenceLine]]]:
-        """Extract entities together with their evidence lines.
+    def _read_subclass(self, sources: dict[AxiomKey, list[str]]) -> None:
+        for e, _, t, v in self._annotations([RDFS_SUBCLASS_OF], [SOURCE]):
+            if "://" in t:  # named parents only, not restrictions (blank nodes)
+                sources[(self._curie(e), "rdfs:subClassOf", self._curie(t))].append(v)
 
-        Single source of truth for Mondo entity extraction. Callers that only
-        need the snapshot (``extract``) discard the evidence; callers that need
-        provenance (``extract_mondo_with_evidence``) keep it.
+    def _read_mappings(self, sources: dict[AxiomKey, list[str]]) -> None:
+        """skos mappings, with the provenance of the xref axiom for the same target."""
+        xref_sources: dict[tuple[str, str], tuple[str, list[str]]] = {}
+        for e, _, t, v in self._annotations([HAS_DBXREF], [SOURCE]):
+            xref = normalize_xref(t)
+            xref_sources.setdefault((e, xref.casefold()), (xref, []))[1].append(v)
+
+        skos_sources: dict[tuple[str, str, str], list[str]] = defaultdict(list)
+        for e, p, t, v in self._annotations(list(SKOS_PREDICATES), [SOURCE, HAS_DBXREF]):
+            skos_sources[(e, p, t)].append(v)
+
+        preds = " ".join(f"<{p}>" for p in SKOS_PREDICATES)
+        for row in self._rows(f"{_PREFIXES} SELECT ?e ?p ?o WHERE {{ VALUES ?p {{ {preds} }} ?e ?p ?o . {_MONDO_SUBJECT} }}"):
+            e, p, o = _value(row["e"]), _value(row["p"]), _value(row["o"])
+            target = self._curie(o)
+            xref, values = xref_sources.get((e, target.casefold()), (target, []))
+            values = values + skos_sources.get((e, p, o), [])
+            if values:
+                sources[(self._curie(e), SKOS_PREDICATES[p], xref)].extend(values)
+
+    @staticmethod
+    def counts(provenance: dict[AxiomKey, AxiomProvenance]) -> dict[str, dict[str, int]]:
+        """Number of annotated axioms per kind (synonym, subclass, mapping), with an ORCID, with a PMID.
+
+        >>> MondoProvenanceExtractor.counts({("MONDO:1", "rdfs:subClassOf", "MONDO:2"): AxiomProvenance(pmids=("1",))})
+        {'synonym': {'axioms': 0, 'with_orcid': 0, 'with_pmid': 0}, 'subclass': {'axioms': 1, 'with_orcid': 0, 'with_pmid': 1}, 'mapping': {'axioms': 0, 'with_orcid': 0, 'with_pmid': 0}}
         """
-        query = """
-        PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-        PREFIX owl: <http://www.w3.org/2002/07/owl#>
-
-        SELECT DISTINCT ?entity ?label WHERE {
-            ?entity a owl:Class .
-            ?entity rdfs:label ?label .
-            FILTER(isIRI(?entity) && CONTAINS(STR(?entity), "MONDO_"))
-        }
-        """
-
-        entity_labels: dict[str, str] = {}
-        for row in self._query(query):
-            entity_iri = self._get_value(row["entity"])
-            label = self._get_value(row["label"])
-            if entity_iri and label:
-                entity_labels[entity_iri] = label
-
-        count = 0
-        converter = self._get_curie_converter()
-
-        for entity_iri, label in entity_labels.items():
-            if skip_deprecated and self._is_deprecated(entity_iri):
-                continue
-
-            curie = _curie_from_iri(entity_iri, converter)
-
-            # Get synonyms with provenance
-            synonyms = list(self._get_synonyms_with_provenance(entity_iri, curie))
-
-            # Get parents
-            parents = list(self._get_parents(entity_iri, converter))
-
-            # Get definition with provenance
-            definition, def_provenance = self._get_definition_with_provenance(
-                entity_iri
-            )
-
-            entity = EntitySnapshot(
-                id=curie,
-                label=label,
-                synonyms=[s for s, _ in synonyms],
-                definition=definition,
-                parents=parents,
-                mappings=[],
-                deprecated=False,
-            )
-            evidence_lines = self._build_entity_evidence_lines(
-                entity_id=curie,
-                version=version,
-                synonyms=synonyms,
-                definition_provenance=def_provenance,
-            )
-            yield entity, evidence_lines
-
-            count += 1
-            if limit and count >= limit:
-                return
-
-    def _extract_entities(
-        self,
-        version: str,
-        limit: int | None = None,
-        skip_deprecated: bool = True,
-    ) -> Iterator[EntitySnapshot]:
-        """Extract entities as snapshots (evidence lines are discarded here)."""
-        for entity, _ in self._iter_entities_with_evidence(
-            version=version, limit=limit, skip_deprecated=skip_deprecated
-        ):
-            yield entity
-
-    def _get_synonyms_with_provenance(
-        self, entity_iri: str, entity_id: str
-    ) -> Iterator[tuple[Synonym, AnnotationProvenance]]:
-        """Get synonyms with their source provenance."""
-        for pred_iri, scope in SYNONYM_PREDICATES.items():
-            query = f"""
-            SELECT ?value WHERE {{
-                <{entity_iri}> <{pred_iri}> ?value .
-            }}
-            """
-            for row in self._query(query):
-                value = self._get_value(row["value"])
-                if not value:
-                    continue
-
-                # Get source annotations for this synonym axiom
-                sources = self._get_annotation_sources(entity_iri, pred_iri, value)
-                provenance = extract_provenance_from_sources(sources)
-
-                synonym = Synonym(value=value, scope=scope)
-                yield synonym, provenance
-
-    def _get_definition_with_provenance(
-        self, entity_iri: str
-    ) -> tuple[str | None, AnnotationProvenance]:
-        """Get definition with its source provenance."""
-        query = f"""
-        SELECT ?def WHERE {{
-            <{entity_iri}> <{IAO_DEFINITION}> ?def .
-        }}
-        """
-        definition = None
-        for row in self._query(query):
-            definition = self._get_value(row["def"])
-            break
-
-        # Get dbxrefs from definition axiom (often contain PMIDs)
-        xrefs = self._get_definition_dbxrefs(entity_iri)
-        provenance = extract_provenance_from_sources(xrefs)
-
-        return definition, provenance
-
-    def _get_parents(
-        self, entity_iri: str, converter: curies.Converter | None = None
-    ) -> Iterator[str]:
-        """Get direct parent classes."""
-        query = f"""
-        PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-        SELECT ?parent WHERE {{
-            <{entity_iri}> rdfs:subClassOf ?parent .
-            FILTER(isIRI(?parent))
-        }}
-        """
-        for row in self._query(query):
-            parent_iri = self._get_value(row["parent"])
-            if parent_iri:
-                yield _curie_from_iri(parent_iri, converter)
-
-    def _is_deprecated(self, entity_iri: str) -> bool:
-        """Check if entity is deprecated."""
-        query = f"""
-        SELECT ?dep WHERE {{
-            <{entity_iri}> <{OWL_DEPRECATED}> ?dep .
-        }}
-        """
-        for row in self._query(query):
-            value = self._get_value(row["dep"])
-            if value:
-                return value.lower() == "true"
-        return False
-
-    def _build_entity_evidence_lines(
-        self,
-        entity_id: str,
-        version: str,
-        synonyms: list[tuple[Synonym, AnnotationProvenance]],
-        definition_provenance: AnnotationProvenance,
-    ) -> list[SieveEvidenceLine]:
-        """Build all evidence lines for an entity.
-
-        Args:
-            entity_id: The Mondo entity ID.
-            version: The Mondo version.
-            synonyms: List of (synonym, provenance) tuples.
-            definition_provenance: Provenance from definition.
-
-        Returns:
-            List of evidence lines for this entity.
-        """
-        lines: list[SieveEvidenceLine] = []
-
-        # 1. Consortium decision (always present)
-        lines.append(create_consortium_evidence_line(entity_id, version))
-
-        # Collect all unique ORCIDs and PMIDs
-        all_orcids: set[str] = set()
-        all_pmids: set[str] = set()
-
-        for _, prov in synonyms:
-            all_orcids.update(prov.orcids)
-            all_pmids.update(prov.pmids)
-
-        all_orcids.update(definition_provenance.orcids)
-        all_pmids.update(definition_provenance.pmids)
-
-        # 2. Expert determinations (one per unique ORCID)
-        for orcid in all_orcids:
-            lines.append(create_expert_evidence_line(orcid, entity_id))
-
-        # 3. Candidate literature (one per unique PMID)
-        for pmid in all_pmids:
-            lines.append(create_candidate_literature_evidence_line(pmid, entity_id))
-
-        return lines
+        out = {kind: {"axioms": 0, "with_orcid": 0, "with_pmid": 0} for kind in ("synonym", "subclass", "mapping")}
+        for (_, predicate, _), prov in provenance.items():
+            c = out[KIND_OF_PREDICATE[predicate]]
+            c["axioms"] += 1
+            c["with_orcid"] += bool(prov.orcids)
+            c["with_pmid"] += bool(prov.pmids)
+        return out
 
 
-def extract_mondo_with_evidence(
-    owl_path: str | Path,
-    limit: int | None = None,
-) -> tuple[ResourceSnapshot, dict[str, list[SieveEvidenceLine]]]:
-    """Extract Mondo entities with their evidence lines.
-
-    This is the main entry point for Mondo extraction with full provenance.
-
-    Args:
-        owl_path: Path to the Mondo OWL file.
-        limit: Maximum number of entities to extract.
-
-    Returns:
-        Tuple of (ResourceSnapshot, dict mapping entity_id to evidence lines).
-
-    Example:
-        >>> # snapshot, evidence = extract_mondo_with_evidence("mondo.owl", limit=10)
-    """
-    extractor = MondoExtractor()
-    extractor._store = extractor._load_owl(Path(owl_path))
-
-    version = extractor._get_version_iri() or extractor._get_version_info() or "unknown"
-
-    entities: list[EntitySnapshot] = []
-    evidence_by_entity: dict[str, list[SieveEvidenceLine]] = {}
-
-    for entity, evidence_lines in extractor._iter_entities_with_evidence(
-        version=version, limit=limit
-    ):
-        entities.append(entity)
-        evidence_by_entity[entity.id] = evidence_lines
-
-    checksum = sha256(Path(owl_path).read_bytes()).hexdigest()
-
-    snapshot = ResourceSnapshot(
-        resource_id="mondo",
-        resource_name="Mondo Disease Ontology",
-        resource_url=str(Path(owl_path).absolute()),
-        version=version,
-        generated_at=datetime.now(timezone.utc),
-        checksum=checksum,
-        entity_count=len(entities),
-        entities=entities,
-    )
-
-    return snapshot, evidence_by_entity
+def extract_mondo_provenance(owl_path: str | Path) -> dict[AxiomKey, AxiomProvenance]:
+    """The provenance of Mondo's synonym, subClassOf and mapping axioms (see :class:`MondoProvenanceExtractor`)."""
+    return MondoProvenanceExtractor().extract(owl_path)

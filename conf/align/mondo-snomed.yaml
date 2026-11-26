@@ -1,0 +1,108 @@
+# Mondo -> SNOMED CT alignment, seeded by OMOP's Mondo mappings and Mondo's own xrefs.
+#
+# Inputs, all prepared by `just align-snomed-prepare` (nothing here fetches implicitly):
+#   data/align/mondo.obo                   latest Mondo release (PURL)
+#   data/align/mondo.sssom.tsv             Mondo's released mapping set; the SCTID rows are a seed
+#   data/align/snomed.tsv                  SNOMED CT extracted from the OMOP/Athena vocabulary zip
+#   data/align/omop_mondo_snomed.sssom.tsv OMOP Mondo "Maps to" rows plus their metadata, as SSSOM
+#
+# Method, in one paragraph. Discovery is the same ladder as the ICD-10-CM reference run, with
+# both seeds held out: Mondo's xrefs are the evaluation gold, and OMOP's rows never reach the
+# candidate generator. Reconciliation then meets the seeds pair by pair, computing each pair's
+# lexical evidence with the discovery code path, and assigns every pair a status and a review
+# tier. Agreement between the two seeds is not counted as corroboration: OMOP's Mondo mappings
+# post-date Mondo's SNOMED xrefs and repeat most of them.
+#
+# SNOMED CT is licensed. Outputs carry SNOMED labels and stay under the gitignored alignments/
+# directory; Mondo's own published mapping set leaves SNOMED labels empty for this reason.
+
+run_id: mondo-snomed
+
+subject:
+  name: mondo
+  prefix: MONDO
+  format: obo
+  path: data/align/mondo.obo
+  url: http://purl.obolibrary.org/obo/mondo.obo
+
+object:
+  name: snomed
+  # Mondo's own prefix for SNOMED CT, so evaluation can read Mondo's xrefs directly.
+  prefix: SCTID
+  format: tsv
+  path: data/align/snomed.tsv
+  iri_base: http://snomed.info/id/
+  options:
+    obsolete_column: obsolete
+
+use_case: >-
+  Cohort identification and knowledge-graph integration from SNOMED CT coded clinical and
+  registry data (OMOP CDM condition_occurrence). An exact match must denote the same disease,
+  because it will be used to pull patient records; broader and narrower relations are recorded
+  with their true predicate rather than promoted to exactMatch.
+
+#   CM-001 disease/disorder — technically distinct, conflated as acceptable
+#   CM-002 disease/phenotype where the distinction is genuinely murky
+#   CM-004 finding-vs-disorder — SNOMED splits Clinical Finding from Disorder; Mondo does not
+# Not permitted: CM-008 cross-species (SNOMED is a human terminology), and RJ-005 targets
+# (morphologic abnormalities), which are not conditions anyone can code.
+conflations_permitted:
+  - CM-001
+  - CM-002
+  - CM-004
+
+candidates:
+  max_candidates: 10
+  # SNOMED identifiers have no category structure; the per-category cap is a no-op here.
+  max_per_category: 3
+  retrieval_limit: 20
+  enable_fuzzy: false
+  min_retrieval_score: 0.3
+
+agent:
+  # Off: this run is meant to be deterministic and repeatable. `just align-snomed-agent`
+  # turns it on; raising max_items or changing the model is a cost decision, not a default.
+  enabled: false
+  model: claude-opus-5
+  batch_size: 12
+  concurrency: 12
+  max_items: 1200
+  max_tokens: 16000
+  effort: high
+  cache_dir: .align_cache
+
+boomer:
+  enabled: true
+  executable: ""
+  window_count: 5
+  runs: 3
+  exhaustive_search_limit: 12
+  subsequent_solutions: 3
+  marginals: true
+  max_marginal_clique_size: 8
+  timeout_seconds: 3600
+
+evaluation:
+  enabled: true
+  gold_qualifier: MONDO:equivalentTo
+  # Must stay true; the seeds below are reconciled after discovery, never fed into it.
+  hold_out: true
+
+reconcile:
+  enabled: true
+  boomer: true
+  # Trust order: when the seeds disagree on a pair's predicate, the first is proposed and
+  # the pair goes to expert review.
+  seeds:
+    - name: mondo
+      path: data/align/mondo.sssom.tsv
+      mapping_source: http://purl.obolibrary.org/obo/mondo/mappings/mondo.sssom.tsv
+      # Mondo's released set carries no confidence column; its xrefs are curated assertions
+      # of mixed provenance (many imported with DOID/UMLS), not reviewed per row.
+      default_confidence: 0.95
+    - name: omop
+      path: data/align/omop_mondo_snomed.sssom.tsv
+      mapping_source: https://w3id.org/mondo-ai/align/seed/omop-mondo-snomed
+
+limit_subjects: 0
+output_root: alignments

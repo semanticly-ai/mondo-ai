@@ -5,12 +5,6 @@ from pathlib import Path
 
 import pytest
 
-from mondo_ai.datamodel import (
-    Coding,
-    CurationStatus,
-    EvidencePacket,
-    SieveStatement,
-)
 from mondo_ai.storage.jsonl_store import (
     FileMetadata,
     JSONLPacketStore,
@@ -19,21 +13,28 @@ from mondo_ai.storage.jsonl_store import (
 )
 
 
-def _create_test_packet(packet_id: str, subject: str = "MONDO:0000001") -> EvidencePacket:
-    """Create a test packet with given ID."""
-    statement = SieveStatement(
-        id=f"stmt_{packet_id}",
-        type="SieveStatement",
-        subject=subject,
-        predicate=Coding(code="oio:hasExactSynonym", label="exact synonym"),
-        object="test synonym",
-        statement_text=f"Test statement for {packet_id}",
-    )
-    return EvidencePacket(
-        id=packet_id,
-        statement=statement,
-        status=CurationStatus.UNREVIEWED,
-    )
+def _create_test_packet(packet_id: str, subject: str = "MONDO:0000001") -> dict:
+    """Create a minimal profile packet dict with the given ID."""
+    return {
+        "id": packet_id,
+        "type": "EvidencePacket",
+        "version": "2026-11-20",
+        "statement": {
+            "id": f"st_{packet_id}",
+            "type": "SynonymStatement",
+            "subject": subject,
+            "predicate": {"code": "oboInOwl:hasExactSynonym"},
+            "object": "test synonym",
+            "statement_text": f"Test statement for {packet_id}",
+            "review_state": "PENDING_REVIEW",
+        },
+        "reference_snapshot": {"id": f"{packet_id}#references", "type": "SieveRegistry"},
+    }
+
+
+def _line(line_id: str) -> dict:
+    """A minimal evidence line dict."""
+    return {"id": line_id, "type": "SieveEvidenceLine", "direction_of_evidence_provided": "supports"}
 
 
 class TestFileMetadata:
@@ -73,19 +74,15 @@ class TestPacketLocation:
     """Tests for PacketLocation dataclass."""
 
     def test_to_dict(self) -> None:
-        """Test serialization."""
-        loc = PacketLocation(file="packets_000.jsonl", offset=1234, length=500)
-        d = loc.to_dict()
-        assert d["file"] == "packets_000.jsonl"
-        assert d["offset"] == 1234
-        assert d["length"] == 500
+        """Serialized as a compact [file, block offset, block length, line] list."""
+        loc = PacketLocation(file="packets_000.jsonl.gz", offset=1234, length=500, line=7)
+        assert loc.to_dict() == ["packets_000.jsonl.gz", 1234, 500, 7]
 
     def test_from_dict(self) -> None:
-        """Test deserialization."""
-        d = {"file": "packets_001.jsonl", "offset": 5000, "length": 800}
-        loc = PacketLocation.from_dict(d)
-        assert loc.file == "packets_001.jsonl"
-        assert loc.offset == 5000
+        """Deserializes the list form and the dict form."""
+        loc = PacketLocation.from_dict(["packets_001.jsonl.gz", 5000, 800, 2])
+        assert (loc.file, loc.offset, loc.length, loc.line) == ("packets_001.jsonl.gz", 5000, 800, 2)
+        assert PacketLocation.from_dict({"file": "f", "offset": 1}).offset == 1
 
 
 class TestManifest:
@@ -144,12 +141,12 @@ class TestJSONLPacketStore:
 
             added, filename = store.add_packet(packet)
             assert added is True
-            assert filename == "packets_000.jsonl"
+            assert filename == "packets_000.jsonl.gz"
 
             retrieved = store.get_packet("pkt_test001")
             assert retrieved is not None
-            assert retrieved.id == "pkt_test001"
-            assert retrieved.statement.subject == "MONDO:0000001"
+            assert retrieved["id"] == "pkt_test001"
+            assert retrieved["statement"]["subject"] == "MONDO:0000001"
 
     def test_contains(self) -> None:
         """Test checking packet existence."""
@@ -181,7 +178,7 @@ class TestJSONLPacketStore:
             packets = [_create_test_packet(f"pkt_{i:03d}") for i in range(5)]
             store.add_packets(packets)
 
-            retrieved_ids = [p.id for p in store.iter_packets()]
+            retrieved_ids = [p["id"] for p in store.iter_packets()]
             assert len(retrieved_ids) == 5
             assert "pkt_000" in retrieved_ids
 
@@ -257,7 +254,7 @@ class TestJSONLPacketStore:
             stats = store.get_stats()
             assert stats["total_packets"] == 5
             assert stats["total_files"] == 1
-            assert stats["open_file"] == "packets_000.jsonl"
+            assert stats["open_file"] == "packets_000.jsonl.gz"
             assert "total_size_mb" in stats
 
     def test_list_files(self) -> None:
@@ -339,7 +336,7 @@ class TestJSONLPacketStoreIntegration:
         """Test adding a large batch that causes multiple file seals."""
         with tempfile.TemporaryDirectory() as tmpdir:
             # 5KB max to force many seals
-            store = JSONLPacketStore(tmpdir, max_file_size=5000)
+            store = JSONLPacketStore(tmpdir, max_file_size=1000, block_size=5)
 
             # Add 50 packets
             packets = [_create_test_packet(f"pkt_{i:04d}") for i in range(50)]
@@ -359,7 +356,7 @@ class TestJSONLPacketStoreIntegration:
     def test_incremental_adds_respect_sealed_files(self) -> None:
         """Test that incremental pipeline runs don't modify sealed files."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            store = JSONLPacketStore(tmpdir, max_file_size=3000)
+            store = JSONLPacketStore(tmpdir, max_file_size=600, block_size=5)
 
             # First run: add 20 packets
             batch1 = [_create_test_packet(f"pkt_{i:04d}") for i in range(20)]
@@ -410,7 +407,7 @@ class TestPacketUpdateAndDeduplication:
             # Retrieved packet should have updated data
             retrieved = store.get_packet("pkt_update")
             assert retrieved is not None
-            assert retrieved.statement.subject == "MONDO:0000002"
+            assert retrieved["statement"]["subject"] == "MONDO:0000002"
 
     def test_update_does_not_increment_packet_count(self) -> None:
         """Test that updating an existing packet doesn't increment packet count."""
@@ -447,7 +444,7 @@ class TestPacketUpdateAndDeduplication:
             # Iterate - should only get latest version
             packets = list(store.iter_packets())
             assert len(packets) == 1
-            assert packets[0].statement.subject == "MONDO:0000002"
+            assert packets[0]["statement"]["subject"] == "MONDO:0000002"
 
     def test_iter_packets_without_deduplication(self) -> None:
         """Test iter_packets with deduplicate=False returns all versions."""
@@ -464,7 +461,7 @@ class TestPacketUpdateAndDeduplication:
             # Iterate without deduplication - should get both versions
             packets = list(store.iter_packets(deduplicate=False))
             assert len(packets) == 2
-            subjects = [p.statement.subject for p in packets]
+            subjects = [p["statement"]["subject"] for p in packets]
             assert "MONDO:0000001" in subjects
             assert "MONDO:0000002" in subjects
 
@@ -481,7 +478,7 @@ class TestPacketUpdateAndDeduplication:
             # Get should return latest
             retrieved = store.get_packet("pkt_multi_update")
             assert retrieved is not None
-            assert retrieved.statement.subject == "MONDO:0000004"
+            assert retrieved["statement"]["subject"] == "MONDO:0000004"
 
             # Iterate should return only 1
             packets = list(store.iter_packets())
@@ -508,7 +505,7 @@ class TestPacketUpdateAndDeduplication:
             # pkt_002 should be updated
             pkt_002 = store.get_packet("pkt_002")
             assert pkt_002 is not None
-            assert pkt_002.statement.subject == "MONDO:UPDATED"
+            assert pkt_002["statement"]["subject"] == "MONDO:UPDATED"
 
 
 class TestMergeEvidence:
@@ -516,7 +513,6 @@ class TestMergeEvidence:
 
     def test_merge_evidence_adds_lines(self) -> None:
         """Test that merge_evidence adds new evidence lines."""
-        from mondo_ai.datamodel import SieveEvidenceLine
 
         with tempfile.TemporaryDirectory() as tmpdir:
             store = JSONLPacketStore(tmpdir)
@@ -526,11 +522,7 @@ class TestMergeEvidence:
             store.add_packet(packet)
 
             # Merge new evidence
-            new_line = SieveEvidenceLine(
-                id="line_001",
-                type="SieveEvidenceLine",
-                direction_of_evidence_provided="supports",
-            )
+            new_line = _line("line_001")
             updated, filename = store.merge_evidence("pkt_merge", [new_line])
 
             assert updated is True
@@ -538,13 +530,12 @@ class TestMergeEvidence:
             # Retrieved packet should have evidence
             retrieved = store.get_packet("pkt_merge")
             assert retrieved is not None
-            assert retrieved.has_evidence_lines is not None
-            assert len(retrieved.has_evidence_lines) == 1
-            assert retrieved.has_evidence_lines[0].id == "line_001"
+            assert retrieved["statement"].get("has_evidence_lines") is not None
+            assert len(retrieved["statement"].get("has_evidence_lines")) == 1
+            assert retrieved["statement"]["has_evidence_lines"][0]["id"] == "line_001"
 
     def test_merge_evidence_deduplicates_by_id(self) -> None:
         """Test that merge_evidence doesn't add duplicate evidence lines."""
-        from mondo_ai.datamodel import SieveEvidenceLine
 
         with tempfile.TemporaryDirectory() as tmpdir:
             store = JSONLPacketStore(tmpdir)
@@ -554,11 +545,11 @@ class TestMergeEvidence:
             store.add_packet(packet)
 
             # Add evidence
-            line1 = SieveEvidenceLine(id="line_001", type="SieveEvidenceLine")
+            line1 = _line("line_001")
             store.merge_evidence("pkt_dedup_merge", [line1])
 
             # Try to add same evidence again
-            line1_dup = SieveEvidenceLine(id="line_001", type="SieveEvidenceLine")
+            line1_dup = _line("line_001")
             updated, _ = store.merge_evidence("pkt_dedup_merge", [line1_dup])
 
             # Should not be updated (no new evidence)
@@ -566,24 +557,22 @@ class TestMergeEvidence:
 
             retrieved = store.get_packet("pkt_dedup_merge")
             assert retrieved is not None
-            assert retrieved.has_evidence_lines is not None
-            assert len(retrieved.has_evidence_lines) == 1
+            assert retrieved["statement"].get("has_evidence_lines") is not None
+            assert len(retrieved["statement"].get("has_evidence_lines")) == 1
 
     def test_merge_evidence_nonexistent_packet_raises(self) -> None:
         """Test that merging into nonexistent packet raises error."""
-        from mondo_ai.datamodel import SieveEvidenceLine
 
         with tempfile.TemporaryDirectory() as tmpdir:
             store = JSONLPacketStore(tmpdir)
 
-            line = SieveEvidenceLine(id="line_001", type="SieveEvidenceLine")
+            line = _line("line_001")
 
             with pytest.raises(ValueError, match="not found"):
                 store.merge_evidence("pkt_nonexistent", [line])
 
     def test_merge_evidence_sealed_packet_skipped(self) -> None:
         """Test that merging into sealed packet is skipped."""
-        from mondo_ai.datamodel import SieveEvidenceLine
 
         with tempfile.TemporaryDirectory() as tmpdir:
             # Small file size to force sealing
@@ -597,7 +586,55 @@ class TestMergeEvidence:
             for i in range(10):
                 pkt_id = f"pkt_{i:03d}"
                 if store.is_in_sealed_file(pkt_id):
-                    line = SieveEvidenceLine(id="new_line", type="SieveEvidenceLine")
+                    line = _line("new_line")
                     updated, _ = store.merge_evidence(pkt_id, [line], skip_if_sealed=True)
                     assert updated is False
                     break
+
+
+class TestBulkWrites:
+    """Bulk adds write the index and manifest once, and a store can be reset."""
+
+    def test_bulk_add_matches_single_adds(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            bulk = JSONLPacketStore(Path(tmpdir) / "bulk", block_size=7)
+            single = JSONLPacketStore(Path(tmpdir) / "single")
+            packets = [_create_test_packet(f"pkt_{i:03d}") for i in range(30)]
+            bulk.add_packets(packets)
+            for p in packets:
+                single.add_packet(p)
+            reopened = JSONLPacketStore(Path(tmpdir) / "bulk")
+            assert list(reopened.iter_packets()) == list(single.iter_packets()) == packets
+            assert all(reopened.get_packet(p["id"]) == p for p in packets)
+            # blocks compress better than one member per packet
+            assert bulk.get_stats()["total_size_mb"] < single.get_stats()["total_size_mb"]
+
+    def test_files_are_plain_gzip_jsonl(self) -> None:
+        import gzip
+        import json
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = JSONLPacketStore(tmpdir, block_size=4)
+            packets = [_create_test_packet(f"pkt_{i:03d}") for i in range(10)]
+            store.add_packets(packets)
+            with gzip.open(Path(tmpdir) / "packets_000.jsonl.gz", "rt") as f:
+                assert [json.loads(line) for line in f] == packets
+
+    def test_rebuild_index_finds_blocks(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = JSONLPacketStore(tmpdir, block_size=3)
+            packets = [_create_test_packet(f"pkt_{i:03d}") for i in range(10)]
+            store.add_packets(packets)
+            before = {p["id"]: store.get_location(p["id"]) for p in packets}
+            assert store.rebuild_index() == 10
+            assert {p["id"]: store.get_location(p["id"]) for p in packets} == before
+
+    def test_reset_removes_store_files(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = JSONLPacketStore(tmpdir)
+            store.add_packets([_create_test_packet("pkt_a")])
+            (Path(tmpdir) / "stats.md").write_text("old")
+            store.reset()
+            assert sorted(p.name for p in Path(tmpdir).iterdir()) == []
+            assert store.get_stats()["total_packets"] == 0
+            assert store.get_packet("pkt_a") is None

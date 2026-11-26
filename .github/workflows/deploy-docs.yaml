@@ -49,9 +49,15 @@ jobs:
         run: |
           uv tool install rust-just
 
+      - name: Check out sieve
+        uses: ./.github/actions/setup-sieve
+
       - name: Install dependencies
         run: uv sync --dev --no-progress
 
-      - name: Generate schema documentation
+      - name: Generate evidence-browser data from the committed store
+        run: uv run mondo-ai export-web-data
+
+      - name: Build and deploy docs
         run: |
-          uv run mkdocs gh-deploy
+          uv run mkdocs gh-deploy --force

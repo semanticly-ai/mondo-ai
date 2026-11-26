@@ -1,0 +1,127 @@
+<?xml version="1.0"?>
+<!-- Minimal Mondo for the provenance extractor tests. It uses the encodings mondo.owl
+     uses: ORCIDs as https://orcid.org/ URLs in oboInOwl:source (subClassOf, xref axioms)
+     and oboInOwl:hasDbXref (synonym axioms), PMIDs as PMID: CURIEs (also "PMID: 1" and
+     PubMed URLs), skos mappings whose provenance sits on the matching hasDbXref axiom,
+     plus annotations the extractor must ignore (non-Mondo subjects, excluded_subClassOf,
+     sources with no ORCID or PMID). -->
+<rdf:RDF xmlns="http://purl.obolibrary.org/obo/mondo.owl#"
+     xmlns:obo="http://purl.obolibrary.org/obo/"
+     xmlns:mondo="http://purl.obolibrary.org/obo/mondo#"
+     xmlns:owl="http://www.w3.org/2002/07/owl#"
+     xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+     xmlns:rdfs="http://www.w3.org/2000/01/rdf-schema#"
+     xmlns:skos="http://www.w3.org/2004/02/skos/core#"
+     xmlns:oboInOwl="http://www.geneontology.org/formats/oboInOwl#">
+    <owl:Ontology rdf:about="http://purl.obolibrary.org/obo/mondo.owl">
+        <owl:versionIRI rdf:resource="http://purl.obolibrary.org/obo/mondo/releases/2026-11-04/mondo.owl"/>
+    </owl:Ontology>
+
+    <owl:Class rdf:about="http://purl.obolibrary.org/obo/MONDO_0000001">
+        <rdfs:label>disease</rdfs:label>
+    </owl:Class>
+
+    <owl:Class rdf:about="http://purl.obolibrary.org/obo/MONDO_0000002">
+        <rdfs:label>lung disease</rdfs:label>
+        <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/MONDO_0000001"/>
+    </owl:Class>
+    <owl:Axiom>
+        <owl:annotatedSource rdf:resource="http://purl.obolibrary.org/obo/MONDO_0000002"/>
+        <owl:annotatedProperty rdf:resource="http://www.w3.org/2000/01/rdf-schema#subClassOf"/>
+        <owl:annotatedTarget rdf:resource="http://purl.obolibrary.org/obo/MONDO_0000001"/>
+        <oboInOwl:source>DOID:850</oboInOwl:source>
+        <oboInOwl:source>MONDO:Redundant</oboInOwl:source>
+        <oboInOwl:source>https://orcid.org/0000-0002-6601-2165</oboInOwl:source>
+    </owl:Axiom>
+
+    <owl:Class rdf:about="http://purl.obolibrary.org/obo/MONDO_0000003">
+        <rdfs:label>cystic fibrosis</rdfs:label>
+        <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/MONDO_0000002"/>
+        <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/MONDO_0000001"/>
+        <mondo:excluded_subClassOf rdf:resource="http://purl.obolibrary.org/obo/MONDO_0000009"/>
+        <oboInOwl:hasExactSynonym>CF</oboInOwl:hasExactSynonym>
+        <oboInOwl:hasExactSynonym>Mucoviscidosis</oboInOwl:hasExactSynonym>
+        <oboInOwl:hasRelatedSynonym>fibrocystic disease</oboInOwl:hasRelatedSynonym>
+        <oboInOwl:hasNarrowSynonym>CF, classic</oboInOwl:hasNarrowSynonym>
+        <oboInOwl:hasDbXref>OMIM:219700</oboInOwl:hasDbXref>
+        <oboInOwl:hasDbXref>Orphanet:586</oboInOwl:hasDbXref>
+        <oboInOwl:hasDbXref>NCIT:C2975</oboInOwl:hasDbXref>
+        <skos:exactMatch rdf:resource="https://omim.org/entry/219700"/>
+        <skos:exactMatch rdf:resource="http://www.orpha.net/ORDO/Orphanet_586"/>
+        <skos:broadMatch rdf:resource="http://purl.obolibrary.org/obo/NCIT_C2975"/>
+    </owl:Class>
+    <owl:Axiom>
+        <owl:annotatedSource rdf:resource="http://purl.obolibrary.org/obo/MONDO_0000003"/>
+        <owl:annotatedProperty rdf:resource="http://www.w3.org/2000/01/rdf-schema#subClassOf"/>
+        <owl:annotatedTarget rdf:resource="http://purl.obolibrary.org/obo/MONDO_0000002"/>
+        <oboInOwl:source>PMID:29804726</oboInOwl:source>
+    </owl:Axiom>
+    <owl:Axiom>
+        <owl:annotatedSource rdf:resource="http://purl.obolibrary.org/obo/MONDO_0000003"/>
+        <owl:annotatedProperty rdf:resource="http://www.w3.org/2000/01/rdf-schema#subClassOf"/>
+        <owl:annotatedTarget rdf:resource="http://purl.obolibrary.org/obo/MONDO_0000001"/>
+        <oboInOwl:source>MONDO:Entailed</oboInOwl:source>
+    </owl:Axiom>
+    <owl:Axiom>
+        <owl:annotatedSource rdf:resource="http://purl.obolibrary.org/obo/MONDO_0000003"/>
+        <owl:annotatedProperty rdf:resource="http://purl.obolibrary.org/obo/mondo#excluded_subClassOf"/>
+        <owl:annotatedTarget rdf:resource="http://purl.obolibrary.org/obo/MONDO_0000009"/>
+        <oboInOwl:source>https://orcid.org/0000-0001-5208-3432</oboInOwl:source>
+    </owl:Axiom>
+    <owl:Axiom>
+        <owl:annotatedSource rdf:resource="http://purl.obolibrary.org/obo/MONDO_0000003"/>
+        <owl:annotatedProperty rdf:resource="http://www.geneontology.org/formats/oboInOwl#hasExactSynonym"/>
+        <owl:annotatedTarget>CF</owl:annotatedTarget>
+        <oboInOwl:hasDbXref>https://orcid.org/0000-0001-5208-3432</oboInOwl:hasDbXref>
+        <oboInOwl:hasDbXref>PMID:12345</oboInOwl:hasDbXref>
+        <oboInOwl:hasSynonymType rdf:resource="http://purl.obolibrary.org/obo/OMO_0003000"/>
+    </owl:Axiom>
+    <owl:Axiom>
+        <owl:annotatedSource rdf:resource="http://purl.obolibrary.org/obo/MONDO_0000003"/>
+        <owl:annotatedProperty rdf:resource="http://www.geneontology.org/formats/oboInOwl#hasExactSynonym"/>
+        <owl:annotatedTarget>Mucoviscidosis</owl:annotatedTarget>
+        <oboInOwl:hasDbXref>https://pubmed.ncbi.nlm.nih.gov/27745641</oboInOwl:hasDbXref>
+    </owl:Axiom>
+    <owl:Axiom>
+        <owl:annotatedSource rdf:resource="http://purl.obolibrary.org/obo/MONDO_0000003"/>
+        <owl:annotatedProperty rdf:resource="http://www.geneontology.org/formats/oboInOwl#hasRelatedSynonym"/>
+        <owl:annotatedTarget>fibrocystic disease</owl:annotatedTarget>
+        <oboInOwl:hasDbXref>DOID:1485</oboInOwl:hasDbXref>
+    </owl:Axiom>
+    <owl:Axiom>
+        <owl:annotatedSource rdf:resource="http://purl.obolibrary.org/obo/MONDO_0000003"/>
+        <owl:annotatedProperty rdf:resource="http://www.geneontology.org/formats/oboInOwl#hasNarrowSynonym"/>
+        <owl:annotatedTarget>CF, classic</owl:annotatedTarget>
+        <oboInOwl:source>PMID: 333</oboInOwl:source>
+    </owl:Axiom>
+    <owl:Axiom>
+        <owl:annotatedSource rdf:resource="http://purl.obolibrary.org/obo/MONDO_0000003"/>
+        <owl:annotatedProperty rdf:resource="http://www.geneontology.org/formats/oboInOwl#hasDbXref"/>
+        <owl:annotatedTarget>OMIM:219700</owl:annotatedTarget>
+        <oboInOwl:source>MONDO:equivalentTo</oboInOwl:source>
+        <oboInOwl:source>https://orcid.org/0000-0002-6601-2165</oboInOwl:source>
+    </owl:Axiom>
+    <owl:Axiom>
+        <owl:annotatedSource rdf:resource="http://purl.obolibrary.org/obo/MONDO_0000003"/>
+        <owl:annotatedProperty rdf:resource="http://www.geneontology.org/formats/oboInOwl#hasDbXref"/>
+        <owl:annotatedTarget>Orphanet:586</owl:annotatedTarget>
+        <oboInOwl:source>MONDO:equivalentTo</oboInOwl:source>
+    </owl:Axiom>
+    <owl:Axiom>
+        <owl:annotatedSource rdf:resource="http://purl.obolibrary.org/obo/MONDO_0000003"/>
+        <owl:annotatedProperty rdf:resource="http://www.w3.org/2004/02/skos/core#broadMatch"/>
+        <owl:annotatedTarget rdf:resource="http://purl.obolibrary.org/obo/NCIT_C2975"/>
+        <oboInOwl:source rdf:resource="https://orcid.org/0000-0001-5208-3432"/>
+    </owl:Axiom>
+
+    <owl:Class rdf:about="http://purl.obolibrary.org/obo/DOID_1485">
+        <rdfs:label>cystic fibrosis</rdfs:label>
+        <oboInOwl:hasExactSynonym>CF</oboInOwl:hasExactSynonym>
+    </owl:Class>
+    <owl:Axiom>
+        <owl:annotatedSource rdf:resource="http://purl.obolibrary.org/obo/DOID_1485"/>
+        <owl:annotatedProperty rdf:resource="http://www.geneontology.org/formats/oboInOwl#hasExactSynonym"/>
+        <owl:annotatedTarget>CF</owl:annotatedTarget>
+        <oboInOwl:hasDbXref>https://orcid.org/0000-0001-5208-3432</oboInOwl:hasDbXref>
+    </owl:Axiom>
+</rdf:RDF>

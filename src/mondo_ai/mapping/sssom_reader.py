@@ -141,6 +141,24 @@ class SSSOMReader:
             return mappings[0]
         return None
 
+    def get_exact_mondo_mapping(self, external_id: str) -> Mapping | None:
+        """Get the skos:exactMatch mapping from Mondo to an external ID, if there is one.
+
+        Unlike ``get_mondo_mapping`` this never falls back to a broad or narrow match, so
+        it is safe for normalizing the ids of a source's own claim to Mondo ids.
+
+        Args:
+            external_id: External ID.
+
+        Returns:
+            The exactMatch Mapping, or None.
+        """
+        self._load()
+        for m in self._external_to_mondo.get(external_id, []):
+            if m.predicate_id == "skos:exactMatch":
+                return m
+        return None
+
     def get_external_ids(self, mondo_id: str, prefix: str | None = None) -> list[str]:
         """Get external IDs mapped to a Mondo ID.
 

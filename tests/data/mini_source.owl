@@ -1,0 +1,72 @@
+<?xml version="1.0"?>
+<!-- Minimal source ontology for extractor tests. It mixes the encodings the real
+     sources use: DOID/ICD10CM-style synonyms and named parents, ORDO-style part_of
+     classification parents, ECC-annotated xrefs and efo:alternative_term, OMIM-style
+     skos:exactMatch IRIs, synonym types and a deprecated class. -->
+<rdf:RDF xmlns="http://purl.obolibrary.org/obo/doid.owl#"
+     xmlns:obo="http://purl.obolibrary.org/obo/"
+     xmlns:owl="http://www.w3.org/2002/07/owl#"
+     xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+     xmlns:rdfs="http://www.w3.org/2000/01/rdf-schema#"
+     xmlns:skos="http://www.w3.org/2004/02/skos/core#"
+     xmlns:efo="http://www.ebi.ac.uk/efo/"
+     xmlns:oboInOwl="http://www.geneontology.org/formats/oboInOwl#">
+    <owl:Ontology rdf:about="http://purl.obolibrary.org/obo/doid.owl">
+        <owl:versionIRI rdf:resource="http://purl.obolibrary.org/obo/doid/releases/2026-10-29/doid.owl"/>
+    </owl:Ontology>
+
+    <owl:Class rdf:about="http://purl.obolibrary.org/obo/DOID_4">
+        <rdfs:label>disease</rdfs:label>
+    </owl:Class>
+
+    <owl:Class rdf:about="http://purl.obolibrary.org/obo/DOID_1">
+        <rdfs:label>lung disease</rdfs:label>
+        <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/DOID_4"/>
+    </owl:Class>
+
+    <owl:Class rdf:about="http://purl.obolibrary.org/obo/DOID_2">
+        <rdfs:label xml:lang="en">cystic fibrosis</rdfs:label>
+        <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/DOID_1"/>
+        <rdfs:subClassOf>
+            <owl:Restriction>
+                <owl:onProperty rdf:resource="http://purl.obolibrary.org/obo/BFO_0000050"/>
+                <owl:someValuesFrom rdf:resource="http://purl.obolibrary.org/obo/DOID_4"/>
+            </owl:Restriction>
+        </rdfs:subClassOf>
+        <oboInOwl:hasExactSynonym>CF</oboInOwl:hasExactSynonym>
+        <oboInOwl:hasRelatedSynonym>mucoviscidosis</oboInOwl:hasRelatedSynonym>
+        <efo:alternative_term xml:lang="en">Cystic fibrosis of pancreas</efo:alternative_term>
+        <obo:IAO_0000115>A genetic disease of the lungs.</obo:IAO_0000115>
+        <oboInOwl:hasDbXref>MIM:219700</oboInOwl:hasDbXref>
+        <oboInOwl:hasDbXref>ORDO:586</oboInOwl:hasDbXref>
+        <skos:exactMatch rdf:resource="http://www.orpha.net/ORDO/Orphanet_586"/>
+    </owl:Class>
+    <owl:Axiom>
+        <owl:annotatedSource rdf:resource="http://purl.obolibrary.org/obo/DOID_2"/>
+        <owl:annotatedProperty rdf:resource="http://www.geneontology.org/formats/oboInOwl#hasExactSynonym"/>
+        <owl:annotatedTarget>CF</owl:annotatedTarget>
+        <oboInOwl:hasSynonymType rdf:resource="http://purl.obolibrary.org/obo/OMO_0003000"/>
+        <oboInOwl:source>PMID:12345</oboInOwl:source>
+    </owl:Axiom>
+    <owl:Axiom>
+        <owl:annotatedSource rdf:resource="http://purl.obolibrary.org/obo/DOID_2"/>
+        <owl:annotatedProperty rdf:resource="http://www.geneontology.org/formats/oboInOwl#hasDbXref"/>
+        <owl:annotatedTarget>MIM:219700</owl:annotatedTarget>
+        <obo:ECO_0000218 xml:lang="en">E (Exact mapping: the two concepts are equivalent)</obo:ECO_0000218>
+    </owl:Axiom>
+    <owl:Axiom>
+        <owl:annotatedSource rdf:resource="http://purl.obolibrary.org/obo/DOID_2"/>
+        <owl:annotatedProperty rdf:resource="http://purl.obolibrary.org/obo/IAO_0000115"/>
+        <owl:annotatedTarget>A genetic disease of the lungs.</owl:annotatedTarget>
+        <oboInOwl:hasDbXref>PMID:999</oboInOwl:hasDbXref>
+    </owl:Axiom>
+
+    <owl:Class rdf:about="http://purl.obolibrary.org/obo/DOID_3">
+        <rdfs:label>obsolete old disease</rdfs:label>
+        <owl:deprecated rdf:datatype="http://www.w3.org/2001/XMLSchema#boolean">true</owl:deprecated>
+    </owl:Class>
+
+    <owl:Class rdf:about="http://purl.obolibrary.org/obo/GO_0000001">
+        <rdfs:label>not a disease</rdfs:label>
+    </owl:Class>
+</rdf:RDF>

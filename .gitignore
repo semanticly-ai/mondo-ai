@@ -146,3 +146,17 @@ dmypy.json
 *.db
 packet_index.db
 /issues
+
+# Generated static evidence-browser data (regenerated on each docs build)
+docs/evidence/data.json
+
+# Alignment runs are build artefacts: 163 MB for one Mondo x ICD-10-CM run, and fully
+# reproducible from the config plus the recorded source checksums in run.yaml.
+/alignments
+
+# Cached adjudication responses, keyed on item content. Safe to delete; regenerating costs
+# API calls, which is why it is kept out of the repo rather than out of the working tree.
+/.align_cache
+
+# Per-machine Claude Code permissions; the skills under .claude/skills are source.
+.claude/settings.local.json

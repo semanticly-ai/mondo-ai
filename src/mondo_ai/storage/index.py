@@ -1,372 +1,345 @@
-"""SQLite-based packet index for fast querying.
+"""SQLite index over a JSONL packet store, for fast querying of packet summaries.
 
-This module provides indexing and querying capabilities for evidence packets
-stored as YAML files. The index stores metadata for fast filtering without
-loading full packet files.
+Each SIEVE profile packet (a dict, one claim per packet) becomes one row holding the
+statement's claim type, subject, predicate, object, text, review state, inclusion score
+S with its strength band and direction, the number of evidence lines, the resources the
+evidence comes from, and the packet version. Rows are written in bulk, so a store of
+~200k packets indexes in seconds.
 
 Example:
     >>> from mondo_ai.storage.index import PacketIndex
+    >>> from mondo_ai.storage.jsonl_store import JSONLPacketStore
     >>> index = PacketIndex("packet_index.db")  # doctest: +SKIP
-    >>> index.build_from_directory("evidence_packets")  # doctest: +SKIP
-    >>> results = index.query(min_score=0.8, status="UNREVIEWED")  # doctest: +SKIP
+    >>> index.build_from_store(JSONLPacketStore("packet_store_merged"))  # doctest: +SKIP
+    >>> rows = index.query(min_score=0.8, review_state="PENDING_REVIEW")  # doctest: +SKIP
 """
+
+from __future__ import annotations
 
 import sqlite3
 from dataclasses import dataclass
+from itertools import islice
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any, Iterable, Iterator
 
-from mondo_ai.datamodel import EvidencePacket, load_packet
+from mondo_ai.stats import score_bucket
+from mondo_ai.storage.jsonl_store import JSONLPacketStore
+
+COLUMNS = (
+    "packet_id",
+    "claim_type",
+    "subject",
+    "predicate",
+    "predicate_label",
+    "object",
+    "statement_text",
+    "review_state",
+    "score",
+    "strength",
+    "direction",
+    "line_count",
+    "sources",
+    "version",
+)
+
+BATCH_SIZE = 10_000
 
 
 @dataclass
 class PacketSummary:
-    """Summary of a packet for index results."""
+    """One indexed packet.
+
+    ``predicate`` is the predicate CURIE and ``predicate_label`` its label; ``sources``
+    is the comma-separated list of resources (infores ids) the evidence comes from.
+    """
 
     packet_id: str
-    file_path: str
-    subject_id: str
-    subject_label: str | None
+    claim_type: str
+    subject: str
     predicate: str
-    object_value: str
-    status: str
+    predicate_label: str | None
+    object: str
+    statement_text: str | None
+    review_state: str | None
     score: float | None
-    evidence_count: int
-    source_ids: str  # Comma-separated
-    created: str | None
-    updated: str | None
+    strength: str | None
+    direction: str | None
+    line_count: int
+    sources: str
+    version: str | None
+
+
+def packet_sources(packet: dict[str, Any]) -> list[str]:
+    """The resources the packet's evidence comes from, sorted.
+
+    Takes the ``resource`` of every item held by an evidence line and of the statement's
+    ``has_evidence``. Items of a higher-order line are copies of other lines, so their
+    own items are already counted.
+
+    >>> packet_sources({"statement": {"has_evidence_lines": [
+    ...     {"has_evidence_items": [{"resource": "infores:omim"}, {"type": "ComputationalScore"}]},
+    ...     {"has_evidence_items": [{"type": "SieveEvidenceLine", "has_evidence_items": []}]}],
+    ...     "has_evidence": [{"resource": "infores:pubmed"}]}})
+    ['infores:omim', 'infores:pubmed']
+    """
+    st = packet["statement"]
+    found: set[str] = set()
+    for line in st.get("has_evidence_lines") or []:
+        for item in line.get("has_evidence_items") or []:
+            if item.get("resource"):
+                found.add(item["resource"])
+    for item in st.get("has_evidence") or []:
+        if item.get("resource"):
+            found.add(item["resource"])
+    return sorted(found)
+
+
+def summarize_packet(packet: dict[str, Any]) -> dict[str, Any]:
+    """The indexed fields of one packet, keyed by column name (``sources`` as a list).
+
+    >>> row = summarize_packet({"id": "mondoai:pkt/1", "version": "v", "statement": {
+    ...     "type": "SynonymStatement", "subject": "MONDO:1", "object": "CF",
+    ...     "predicate": {"code": "oboInOwl:hasExactSynonym", "label": "has exact synonym"},
+    ...     "score": 0.5, "strength": "moderate", "has_evidence_lines": [{}]}})
+    >>> row["claim_type"], row["predicate_label"], row["line_count"], row["sources"]
+    ('SynonymStatement', 'has exact synonym', 1, [])
+    """
+    st = packet["statement"]
+    predicate = st.get("predicate") or {}
+    return {
+        "packet_id": packet["id"],
+        "claim_type": st["type"],
+        "subject": st["subject"],
+        "predicate": predicate.get("code") or "",
+        "predicate_label": predicate.get("label"),
+        "object": st["object"],
+        "statement_text": st.get("statement_text"),
+        "review_state": st.get("review_state"),
+        "score": st.get("score"),
+        "strength": st.get("strength"),
+        "direction": st.get("direction"),
+        "line_count": len(st.get("has_evidence_lines") or []),
+        "sources": packet_sources(packet),
+        "version": packet.get("version"),
+    }
+
+
+def _row(packet: dict[str, Any]) -> tuple[Any, ...]:
+    """A packet as a tuple in COLUMNS order, sources joined by commas."""
+    summary = summarize_packet(packet)
+    summary["sources"] = ",".join(summary["sources"])
+    return tuple(summary[c] for c in COLUMNS)
 
 
 class PacketIndex:
-    """SQLite-based index for evidence packets."""
+    """SQLite index of packet summaries.
+
+    >>> idx = PacketIndex(":memory:")
+    >>> idx.index_packets([{"id": "mondoai:pkt/1", "statement": {"type": "SynonymStatement",
+    ...     "subject": "MONDO:1", "object": "CF", "score": 0.4}}])
+    1
+    >>> [r.packet_id for r in idx.query(subject="MONDO:1")]
+    ['mondoai:pkt/1']
+    """
 
     def __init__(self, db_path: str | Path = "packet_index.db") -> None:
-        """Initialize the packet index.
+        """Open (or create) the index database.
 
         Args:
-            db_path: Path to SQLite database file.
+            db_path: Path to the SQLite database file (``":memory:"`` for a scratch index).
         """
-        self.db_path = Path(db_path)
+        self.db_path = db_path if db_path == ":memory:" else Path(db_path)
         self._conn: sqlite3.Connection | None = None
         self._ensure_schema()
 
     def _get_conn(self) -> sqlite3.Connection:
-        """Get or create database connection."""
+        """Get or create the database connection."""
         if self._conn is None:
             self._conn = sqlite3.connect(self.db_path)
             self._conn.row_factory = sqlite3.Row
         return self._conn
 
     def _ensure_schema(self) -> None:
-        """Create database schema if it doesn't exist."""
+        """Create the table and indexes if they don't exist."""
         conn = self._get_conn()
         conn.executescript("""
             CREATE TABLE IF NOT EXISTS packets (
                 packet_id TEXT PRIMARY KEY,
-                file_path TEXT NOT NULL,
-                subject_id TEXT NOT NULL,
-                subject_label TEXT,
+                claim_type TEXT NOT NULL,
+                subject TEXT NOT NULL,
                 predicate TEXT NOT NULL,
-                object_value TEXT NOT NULL,
-                status TEXT NOT NULL,
+                predicate_label TEXT,
+                object TEXT NOT NULL,
+                statement_text TEXT,
+                review_state TEXT,
                 score REAL,
-                evidence_count INTEGER DEFAULT 0,
-                source_ids TEXT,
-                created TEXT,
-                updated TEXT
+                strength TEXT,
+                direction TEXT,
+                line_count INTEGER NOT NULL DEFAULT 0,
+                sources TEXT NOT NULL DEFAULT '',
+                version TEXT
             );
-
-            CREATE INDEX IF NOT EXISTS idx_subject_id ON packets(subject_id);
-            CREATE INDEX IF NOT EXISTS idx_status ON packets(status);
+            CREATE INDEX IF NOT EXISTS idx_claim_type ON packets(claim_type);
+            CREATE INDEX IF NOT EXISTS idx_subject ON packets(subject);
+            CREATE INDEX IF NOT EXISTS idx_object ON packets(object);
+            CREATE INDEX IF NOT EXISTS idx_review_state ON packets(review_state);
             CREATE INDEX IF NOT EXISTS idx_score ON packets(score);
-            CREATE INDEX IF NOT EXISTS idx_predicate ON packets(predicate);
         """)
         conn.commit()
 
     def close(self) -> None:
-        """Close database connection."""
+        """Close the database connection."""
         if self._conn:
             self._conn.close()
             self._conn = None
 
-    def _extract_metadata(self, packet: EvidencePacket, file_path: Path) -> dict:
-        """Extract indexable metadata from a packet.
-
-        Args:
-            packet: The evidence packet.
-            file_path: Path to the packet file.
-
-        Returns:
-            Dict of metadata for indexing.
-        """
-        # Get score from synthesis if available
-        score = None
-        if packet.evidence_synthesis and packet.evidence_synthesis.score:
-            score = packet.evidence_synthesis.score.value
-
-        # Get predicate label
-        predicate = ""
-        if packet.statement.predicate:
-            predicate = packet.statement.predicate.label or packet.statement.predicate.code or ""
-
-        # Count evidence lines and extract source IDs
-        evidence_count = 0
-        source_ids = set()
-        if packet.has_evidence_lines:
-            evidence_count = len(packet.has_evidence_lines)
-            for line in packet.has_evidence_lines:
-                if line.has_evidence_items:
-                    for item in line.has_evidence_items:
-                        # Try to get source_id from ConcordanceItem
-                        if hasattr(item, "source_id") and item.source_id:
-                            source_ids.add(item.source_id)
-
-        return {
-            "packet_id": packet.id,
-            "file_path": str(file_path),
-            "subject_id": packet.statement.subject or "",
-            "subject_label": packet.statement.subject_label,
-            "predicate": predicate,
-            "object_value": packet.statement.object or "",
-            "status": packet.status.value if hasattr(packet.status, "value") else (packet.status or "UNREVIEWED"),
-            "score": score,
-            "evidence_count": evidence_count,
-            "source_ids": ",".join(sorted(source_ids)),
-            "created": str(packet.created) if packet.created else None,
-            "updated": str(packet.updated) if packet.updated else None,
-        }
-
-    def index_packet(self, packet: EvidencePacket, file_path: Path) -> None:
-        """Index a single packet.
-
-        Args:
-            packet: The evidence packet.
-            file_path: Path to the packet file.
-        """
+    def clear(self) -> None:
+        """Remove every row."""
         conn = self._get_conn()
-        meta = self._extract_metadata(packet, file_path)
-
-        conn.execute("""
-            INSERT OR REPLACE INTO packets
-            (packet_id, file_path, subject_id, subject_label, predicate,
-             object_value, status, score, evidence_count, source_ids, created, updated)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
-            meta["packet_id"],
-            meta["file_path"],
-            meta["subject_id"],
-            meta["subject_label"],
-            meta["predicate"],
-            meta["object_value"],
-            meta["status"],
-            meta["score"],
-            meta["evidence_count"],
-            meta["source_ids"],
-            meta["created"],
-            meta["updated"],
-        ))
+        conn.execute("DELETE FROM packets")
         conn.commit()
 
-    def build_from_directory(
-        self,
-        directory: Path | str,
-        pattern: str = "pkt_*.yaml",
-        clear: bool = True,
-    ) -> int:
-        """Build index from a directory of packet files.
+    def index_packets(self, packets: Iterable[dict[str, Any]]) -> int:
+        """Insert or replace packets in bulk.
 
         Args:
-            directory: Directory containing packet YAML files.
-            pattern: Glob pattern for packet files.
-            clear: If True, clear existing index first.
+            packets: Packet dicts (a list or a store iterator).
+
+        Returns:
+            Number of packets written.
+        """
+        conn = self._get_conn()
+        sql = f"INSERT OR REPLACE INTO packets ({', '.join(COLUMNS)}) VALUES ({', '.join('?' * len(COLUMNS))})"
+        rows = (_row(p) for p in packets)
+        count = 0
+        while batch := list(islice(rows, BATCH_SIZE)):
+            conn.executemany(sql, batch)
+            count += len(batch)
+        conn.commit()
+        return count
+
+    def build_from_store(self, store: JSONLPacketStore, clear: bool = True) -> int:
+        """Index every packet of a JSONL store.
+
+        Args:
+            store: The store to index (latest version of each packet).
+            clear: If True, empty the index first.
 
         Returns:
             Number of packets indexed.
         """
-        directory = Path(directory)
-        conn = self._get_conn()
-
         if clear:
-            conn.execute("DELETE FROM packets")
-            conn.commit()
-
-        count = 0
-        for file_path in sorted(directory.glob(pattern)):
-            try:
-                packet = load_packet(file_path)
-                self.index_packet(packet, file_path)
-                count += 1
-            except Exception as e:
-                print(f"Warning: Failed to index {file_path}: {e}")
-
-        return count
+            self.clear()
+        return self.index_packets(store.iter_packets())
 
     def query(
         self,
-        subject_id: str | None = None,
+        claim_type: str | None = None,
+        subject: str | None = None,
         predicate: str | None = None,
-        status: str | None = None,
+        object: str | None = None,
+        review_state: str | None = None,
         min_score: float | None = None,
         max_score: float | None = None,
-        source_id: str | None = None,
+        strength: str | None = None,
+        direction: str | None = None,
+        source: str | None = None,
+        min_lines: int | None = None,
+        text: str | None = None,
+        version: str | None = None,
         limit: int = 100,
         offset: int = 0,
     ) -> list[PacketSummary]:
-        """Query the index with filters.
+        """Query the index; results are ordered by score, highest first.
 
         Args:
-            subject_id: Filter by Mondo ID (exact match).
-            predicate: Filter by predicate (contains match).
-            status: Filter by status (UNREVIEWED, APPROVED, REJECTED).
-            min_score: Minimum NER score.
-            max_score: Maximum NER score.
-            source_id: Filter by source (doid, ordo, omim).
-            limit: Maximum results to return.
-            offset: Number of results to skip.
+            claim_type: Statement class (SynonymStatement, SubclassStatement, MappingStatement).
+            subject: Mondo id (exact).
+            predicate: Predicate CURIE or label (exact).
+            object: Statement object (exact).
+            review_state: e.g. PENDING_REVIEW or NOT_VERIFIED.
+            min_score: Minimum inclusion score S.
+            max_score: Maximum inclusion score S.
+            strength: Strength band (strong, moderate, weak).
+            direction: supports or disputes.
+            source: A resource (infores id) among the packet's sources.
+            min_lines: Minimum number of evidence lines.
+            text: Substring of the statement text (case-insensitive).
+            version: Packet version.
+            limit: Maximum results.
+            offset: Results to skip.
 
         Returns:
-            List of PacketSummary objects.
+            Matching PacketSummary rows.
         """
-        conn = self._get_conn()
-
         conditions: list[str] = []
         params: list[Any] = []
-
-        if subject_id:
-            conditions.append("subject_id = ?")
-            params.append(subject_id)
-
-        if predicate:
-            conditions.append("predicate LIKE ?")
-            params.append(f"%{predicate}%")
-
-        if status:
-            conditions.append("status = ?")
-            params.append(status)
-
+        for column, value in (
+            ("claim_type", claim_type),
+            ("subject", subject),
+            ("object", object),
+            ("review_state", review_state),
+            ("strength", strength),
+            ("direction", direction),
+            ("version", version),
+        ):
+            if value is not None:
+                conditions.append(f"{column} = ?")
+                params.append(value)
+        if predicate is not None:
+            conditions.append("(predicate = ? OR predicate_label = ?)")
+            params.extend([predicate, predicate])
         if min_score is not None:
             conditions.append("score >= ?")
             params.append(min_score)
-
         if max_score is not None:
             conditions.append("score <= ?")
             params.append(max_score)
+        if source is not None:
+            conditions.append("(',' || sources || ',') LIKE ?")
+            params.append(f"%,{source},%")
+        if min_lines is not None:
+            conditions.append("line_count >= ?")
+            params.append(min_lines)
+        if text is not None:
+            conditions.append("statement_text LIKE ?")
+            params.append(f"%{text}%")
+        where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+        sql = f"SELECT * FROM packets {where} ORDER BY score DESC NULLS LAST, packet_id LIMIT ? OFFSET ?"
+        cursor = self._get_conn().execute(sql, [*params, limit, offset])
+        return [PacketSummary(**dict(row)) for row in cursor]
 
-        if source_id:
-            conditions.append("source_ids LIKE ?")
-            params.append(f"%{source_id}%")
+    def _counts(self, column: str) -> dict[str, int]:
+        """Row counts by the values of one column."""
+        cursor = self._get_conn().execute(
+            f"SELECT {column}, COUNT(*) FROM packets GROUP BY {column} ORDER BY COUNT(*) DESC"
+        )
+        return {str(row[0]): row[1] for row in cursor}
 
-        where_clause = ""
-        if conditions:
-            where_clause = "WHERE " + " AND ".join(conditions)
-
-        query = f"""
-            SELECT * FROM packets
-            {where_clause}
-            ORDER BY score DESC NULLS LAST, packet_id
-            LIMIT ? OFFSET ?
-        """
-        params.extend([limit, offset])
-
-        cursor = conn.execute(query, params)
-        results = []
-        for row in cursor:
-            results.append(PacketSummary(
-                packet_id=row["packet_id"],
-                file_path=row["file_path"],
-                subject_id=row["subject_id"],
-                subject_label=row["subject_label"],
-                predicate=row["predicate"],
-                object_value=row["object_value"],
-                status=row["status"],
-                score=row["score"],
-                evidence_count=row["evidence_count"],
-                source_ids=row["source_ids"],
-                created=row["created"],
-                updated=row["updated"],
-            ))
-
-        return results
-
-    def get_stats(self) -> dict:
-        """Get summary statistics from the index.
-
-        Returns:
-            Dict with counts and statistics.
+    def get_stats(self) -> dict[str, Any]:
+        """Summary counts: totals and packets by claim type, predicate, review state,
+        strength, score bucket and source.
         """
         conn = self._get_conn()
-
-        stats = {}
-
-        # Total count
-        stats["total_packets"] = conn.execute(
-            "SELECT COUNT(*) FROM packets"
-        ).fetchone()[0]
-
-        # By status
-        cursor = conn.execute(
-            "SELECT status, COUNT(*) as cnt FROM packets GROUP BY status"
-        )
-        stats["by_status"] = {row[0]: row[1] for row in cursor}
-
-        # By predicate
-        cursor = conn.execute(
-            "SELECT predicate, COUNT(*) as cnt FROM packets GROUP BY predicate ORDER BY cnt DESC LIMIT 10"
-        )
-        stats["by_predicate"] = {row[0]: row[1] for row in cursor}
-
-        # Score distribution
-        cursor = conn.execute("""
-            SELECT
-                CASE
-                    WHEN score >= 0.7 THEN 'accept'
-                    WHEN score <= -0.3 THEN 'reject'
-                    WHEN score IS NULL THEN 'unscored'
-                    ELSE 'review'
-                END as bucket,
-                COUNT(*) as cnt
-            FROM packets
-            GROUP BY bucket
-        """)
+        stats: dict[str, Any] = {
+            "total_packets": conn.execute("SELECT COUNT(*) FROM packets").fetchone()[0],
+            "unique_subjects": conn.execute("SELECT COUNT(DISTINCT subject) FROM packets").fetchone()[0],
+            "by_claim_type": self._counts("claim_type"),
+            "by_predicate": self._counts("COALESCE(predicate_label, predicate)"),
+            "by_review_state": self._counts("review_state"),
+            "by_strength": self._counts("strength"),
+        }
+        conn.create_function("score_bucket", 1, lambda s: "unscored" if s is None else score_bucket(s))
+        cursor = conn.execute("SELECT score_bucket(score) AS bucket, COUNT(*) FROM packets GROUP BY bucket")
         stats["score_buckets"] = {row[0]: row[1] for row in cursor}
-
-        # Evidence source counts
-        cursor = conn.execute("SELECT source_ids FROM packets WHERE source_ids != ''")
-        source_counts: dict[str, int] = {}
-        for row in cursor:
-            for src in row[0].split(","):
-                if src:
-                    source_counts[src] = source_counts.get(src, 0) + 1
-        stats["by_source"] = source_counts
-
-        # Unique subjects
-        stats["unique_subjects"] = conn.execute(
-            "SELECT COUNT(DISTINCT subject_id) FROM packets"
-        ).fetchone()[0]
-
+        by_source: dict[str, int] = {}
+        for (sources,) in conn.execute("SELECT sources FROM packets WHERE sources != ''"):
+            for src in sources.split(","):
+                by_source[src] = by_source.get(src, 0) + 1
+        stats["by_source"] = by_source
         return stats
 
     def iter_all(self) -> Iterator[PacketSummary]:
-        """Iterate over all indexed packets.
-
-        Yields:
-            PacketSummary for each packet.
-        """
-        conn = self._get_conn()
-        cursor = conn.execute("SELECT * FROM packets ORDER BY packet_id")
-
-        for row in cursor:
-            yield PacketSummary(
-                packet_id=row["packet_id"],
-                file_path=row["file_path"],
-                subject_id=row["subject_id"],
-                subject_label=row["subject_label"],
-                predicate=row["predicate"],
-                object_value=row["object_value"],
-                status=row["status"],
-                score=row["score"],
-                evidence_count=row["evidence_count"],
-                source_ids=row["source_ids"],
-                created=row["created"],
-                updated=row["updated"],
-            )
+        """Every indexed packet, ordered by id."""
+        for row in self._get_conn().execute("SELECT * FROM packets ORDER BY packet_id"):
+            yield PacketSummary(**dict(row))

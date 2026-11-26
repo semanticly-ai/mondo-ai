@@ -48,10 +48,15 @@ class ContentWeights(BaseModel):
     For example, OMIM might be highly reliable for exact synonyms but less so
     for hierarchy relationships.
 
+    The weight is the line strength ``score_of_evidence_provided`` (0-1) that a claim of
+    this kind from this source contributes to the inclusion score.
+
     Example:
         >>> cw = ContentWeights(exact_synonym=0.95, related_synonym=0.85)
-        >>> cw.get_weight("oio:hasExactSynonym")
+        >>> cw.get_weight("oboInOwl:hasExactSynonym")
         0.95
+        >>> cw.get_weight("skos:exactMatch")
+        0.6
     """
 
     exact_synonym: float = Field(
@@ -96,6 +101,12 @@ class ContentWeights(BaseModel):
         le=1.0,
         description="Weight for subClassOf/parent statements",
     )
+    mapping: float = Field(
+        default=0.6,
+        ge=0.0,
+        le=1.0,
+        description="Weight for a mapping (xref or skos match) this source asserts",
+    )
     default: float = Field(
         default=0.7,
         ge=0.0,
@@ -105,13 +116,17 @@ class ContentWeights(BaseModel):
 
     # Mapping from predicate codes to field names
     _PREDICATE_MAP: dict[str, str] = {
-        "oio:hasExactSynonym": "exact_synonym",
-        "oio:hasRelatedSynonym": "related_synonym",
-        "oio:hasBroadSynonym": "broad_synonym",
-        "oio:hasNarrowSynonym": "narrow_synonym",
+        "oboInOwl:hasExactSynonym": "exact_synonym",
+        "oboInOwl:hasRelatedSynonym": "related_synonym",
+        "oboInOwl:hasBroadSynonym": "broad_synonym",
+        "oboInOwl:hasNarrowSynonym": "narrow_synonym",
         "rdfs:label": "label",
         "IAO:0000115": "definition",
         "rdfs:subClassOf": "parent",
+        "skos:exactMatch": "mapping",
+        "skos:broadMatch": "mapping",
+        "skos:narrowMatch": "mapping",
+        "skos:relatedMatch": "mapping",
     }
 
     def get_weight(self, predicate_code: str) -> float:
@@ -149,6 +164,23 @@ class ResourceConfig(BaseModel):
     id: str = Field(..., description="Unique identifier for this resource (e.g., 'omim')")
     name: str = Field(..., description="Human-readable name")
     url: str = Field(..., description="URL to download the OWL file from")
+    infores: str = Field(default="", description="Information resource CURIE (e.g., 'infores:omim')")
+    curie_prefixes: list[str] = Field(
+        default_factory=list,
+        description="CURIE prefixes of this resource's records (e.g., ['OMIM', 'OMIMPS'])",
+    )
+    iri_filter: str = Field(default="", description="IRI substring selecting this resource's classes")
+    quality: Optional[float] = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description="Resource quality rating (the q factor of its lines); None = rule default",
+    )
+    default_role: str = Field(default="PRIMARY", description="PRIMARY or AGGREGATOR")
+    derives_content_from: list[str] = Field(
+        default_factory=list,
+        description="Resource ids (e.g. 'omim') this resource takes content from",
+    )
     enabled_content: list[ContentType] = Field(
         default_factory=lambda: [ContentType.SYNONYMS],
         description="Content types to extract from this resource",
@@ -172,40 +204,33 @@ class ResourceConfig(BaseModel):
 
 
 class ScoringConfig(BaseModel):
-    """Configuration for evidence scoring thresholds.
+    """Parameters of the AggregationRules that compute the inclusion score S.
 
-    The Net Evidence Ratio (NER) is calculated as:
-        NER = (S+ - S-) / (S+ + S- + S?)
+    S follows sieve's reference implementation (D-063): per line w = d * s * q * c, the
+    strongest line per independence cluster counts, L = L0 + k * sum(w), S = tanh(L/2)
+    in [-1, 1]. The values below are written into one versioned AggregationRule per claim
+    type and frozen in every packet's reference_snapshot. They are illustrative, like
+    sieve's example registry; calibrating them is the D-063 design task.
 
-    Where S+ is sum of supporting evidence strengths, S- is contradicting,
-    and S? is uncertain.
-
-    Note: Evidence weights are now configured per-source in ResourceConfig.content_weights.
+    Example:
+        >>> ScoringConfig().strength_bands[0]
+        'strong >= 0.8'
     """
 
-    accept_threshold: float = Field(
-        default=0.7,
-        ge=-1.0,
-        le=1.0,
-        description="Minimum NER score to auto-accept",
+    rule_version: str = Field(default="1.0", description="Version of the aggregation rules")
+    scaling_factor: float = Field(default=2.0, description="k in L = L0 + k * sum(w)")
+    default_quality: float = Field(
+        default=0.5, ge=0.0, le=1.0, description="q for a line whose sources carry no quality rating"
     )
-    reject_threshold: float = Field(
-        default=-0.3,
-        ge=-1.0,
-        le=1.0,
-        description="Maximum NER score to auto-reject",
+    confidence_floor: float = Field(
+        default=0.3, ge=0.0, le=1.0, description="Lines with confidence below this are excluded"
     )
-    review_threshold_min: float = Field(
-        default=-0.3,
-        ge=-1.0,
-        le=1.0,
-        description="Minimum NER for human review range",
+    source_ingest_prior: float = Field(
+        default=0.0, description="Claim prior L0 for claims proposed by source ingest"
     )
-    review_threshold_max: float = Field(
-        default=0.7,
-        ge=-1.0,
-        le=1.0,
-        description="Maximum NER for human review range",
+    strength_bands: list[str] = Field(
+        default_factory=lambda: ["strong >= 0.8", "moderate >= 0.4", "weak < 0.4"],
+        description="Ordered bands of S and of line strengths",
     )
 
 
@@ -326,7 +351,7 @@ class MondoConfig(BaseModel):
         description="URL to download Mondo OWL",
     )
     sssom_url: str = Field(
-        default="http://purl.obolibrary.org/obo/mondo/mondo.sssom.tsv",
+        default="http://purl.obolibrary.org/obo/mondo/mappings/mondo.sssom.tsv",
         description="URL to download Mondo SSSOM mappings",
     )
     cache_dir: str = Field(
@@ -429,7 +454,7 @@ class PipelineConfig(BaseModel):
 
 
 def get_default_config() -> PipelineConfig:
-    """Get the default pipeline configuration with OMIM, ORDO, and DOID.
+    """Get the default pipeline configuration with OMIM, ORDO, DOID and ICD-10-CM.
 
     Returns:
         Default configuration with standard sources.
@@ -437,15 +462,20 @@ def get_default_config() -> PipelineConfig:
     Example:
         >>> config = get_default_config()
         >>> [r.id for r in config.resources]
-        ['omim', 'ordo', 'doid']
+        ['omim', 'ordo', 'doid', 'icd10cm']
     """
+    all_content = [ContentType.SYNONYMS, ContentType.HIERARCHY, ContentType.MAPPINGS]
     return PipelineConfig(
         resources=[
             ResourceConfig(
                 id="omim",
                 name="OMIM",
-                url="https://data.omim.org/downloads/YOUR_API_KEY/mimTitles.txt",
-                enabled_content=[ContentType.SYNONYMS, ContentType.LABELS],
+                url="https://github.com/monarch-initiative/omim/releases/latest/download/omim.owl",
+                infores="infores:omim",
+                curie_prefixes=["OMIM", "OMIMPS"],
+                iri_filter="omim.org/entry/",
+                quality=0.9,
+                enabled_content=all_content,
                 content_weights=ContentWeights(
                     exact_synonym=0.95,
                     related_synonym=0.85,
@@ -453,13 +483,19 @@ def get_default_config() -> PipelineConfig:
                     narrow_synonym=0.75,
                     label=0.95,
                     definition=0.90,
+                    parent=0.80,
+                    mapping=0.5,
                 ),
             ),
             ResourceConfig(
                 id="ordo",
                 name="Orphanet Rare Disease Ontology",
-                url="http://www.orphadata.org/data/ORDO/ordo_orphanet.owl",
-                enabled_content=[ContentType.SYNONYMS, ContentType.LABELS, ContentType.HIERARCHY],
+                url="https://www.orphadata.com/data/ontologies/ordo/last_version/ORDO_en_4.9.owl",
+                infores="infores:orphanet",
+                curie_prefixes=["Orphanet"],
+                iri_filter="Orphanet_",
+                quality=0.9,
+                enabled_content=all_content,
                 content_weights=ContentWeights(
                     exact_synonym=0.90,
                     related_synonym=0.80,
@@ -468,13 +504,19 @@ def get_default_config() -> PipelineConfig:
                     label=0.90,
                     definition=0.85,
                     parent=0.85,
+                    mapping=0.8,
                 ),
             ),
             ResourceConfig(
                 id="doid",
                 name="Disease Ontology",
                 url="http://purl.obolibrary.org/obo/doid.owl",
-                enabled_content=[ContentType.SYNONYMS, ContentType.LABELS, ContentType.HIERARCHY],
+                infores="infores:disease-ontology",
+                curie_prefixes=["DOID"],
+                iri_filter="DOID_",
+                quality=0.8,
+                derives_content_from=["omim"],
+                enabled_content=all_content,
                 content_weights=ContentWeights(
                     exact_synonym=0.85,
                     related_synonym=0.75,
@@ -483,6 +525,27 @@ def get_default_config() -> PipelineConfig:
                     label=0.85,
                     definition=0.80,
                     parent=0.80,
+                    mapping=0.5,
+                ),
+            ),
+            ResourceConfig(
+                id="icd10cm",
+                name="ICD-10-CM",
+                url="http://purl.obolibrary.org/obo/mondo/sources/icd10cm.owl",
+                infores="infores:icd10cm",
+                curie_prefixes=["ICD10CM"],
+                iri_filter="ontology/ICD10CM/",
+                quality=0.8,
+                enabled_content=all_content,
+                content_weights=ContentWeights(
+                    exact_synonym=0.80,
+                    related_synonym=0.70,
+                    broad_synonym=0.60,
+                    narrow_synonym=0.60,
+                    label=0.80,
+                    definition=0.70,
+                    parent=0.60,
+                    mapping=0.5,
                 ),
             ),
         ],

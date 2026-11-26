@@ -1,7 +1,7 @@
 """PubMed enrichment module for fetching literature evidence.
 
-This module queries NCBI's E-utilities API to find relevant papers
-and creates LiteratureEvidence items for evidence packets.
+This module queries NCBI's E-utilities API to find relevant papers. The enricher
+(``mondo_ai.enrichment.enricher``) turns them into Publication items of the SIEVE profile.
 
 Example:
     >>> from mondo_ai.enrichment.pubmed import PubMedClient
@@ -13,7 +13,7 @@ Example:
 
 import os
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 from xml.etree import ElementTree
@@ -38,6 +38,10 @@ class PubMedPaper:
     journal: str | None
     year: str | None
     doi: str | None
+    publication_date: str | None = None
+    """Full ISO publication date (YYYY-MM-DD), only when PubMed gives year, month and day."""
+    publication_types: list[tuple[str, str]] = field(default_factory=list)
+    """PubMed publication types as (MeSH UI, name), e.g. ("D016428", "Journal Article")."""
 
     @property
     def reference_id(self) -> str:
@@ -54,11 +58,15 @@ class PubMedPaper:
             "journal": self.journal,
             "year": self.year,
             "doi": self.doi,
+            "publication_date": self.publication_date,
+            "publication_types": [list(t) for t in self.publication_types],
             "content_type": "abstract_only" if self.abstract else "metadata_only",
         }
 
         lines = ["---"]
-        lines.append(yaml.dump(frontmatter, default_flow_style=False, sort_keys=False).strip())
+        lines.append(
+            yaml.dump(frontmatter, default_flow_style=False, sort_keys=False).strip()
+        )
         lines.append("---")
         lines.append("")
         lines.append(f"# {self.title}")
@@ -121,7 +129,9 @@ class ReferenceCache:
                     abstract = None
                     if "## Abstract" in md_content:
                         abstract_section = md_content.split("## Abstract", 1)[1].strip()
-                        if abstract_section and not abstract_section.startswith("*No abstract"):
+                        if abstract_section and not abstract_section.startswith(
+                            "*No abstract"
+                        ):
                             abstract = abstract_section
 
                     return PubMedPaper(
@@ -132,6 +142,11 @@ class ReferenceCache:
                         journal=frontmatter.get("journal"),
                         year=frontmatter.get("year"),
                         doi=frontmatter.get("doi"),
+                        publication_date=frontmatter.get("publication_date"),
+                        publication_types=[
+                            (ui, name)
+                            for ui, name in frontmatter.get("publication_types") or []
+                        ],
                     )
                 except yaml.YAMLError:
                     pass
@@ -255,54 +270,9 @@ class PubMedClient:
             response = httpx.get(EFETCH_URL, params=params, timeout=30.0)
             response.raise_for_status()
 
-            # Parse XML response
-            root = ElementTree.fromstring(response.content)
-            article = root.find(".//PubmedArticle")
-            if article is None:
+            paper = parse_article(pmid, response.content)
+            if paper is None:
                 return None
-
-            # Extract fields
-            title_elem = article.find(".//ArticleTitle")
-            title = title_elem.text if title_elem is not None else ""
-
-            abstract_elem = article.find(".//AbstractText")
-            abstract = abstract_elem.text if abstract_elem is not None else None
-
-            # Authors
-            authors = []
-            for author in article.findall(".//Author"):
-                lastname = author.find("LastName")
-                forename = author.find("ForeName")
-                if lastname is not None:
-                    name = lastname.text or ""
-                    if forename is not None and forename.text:
-                        name = f"{forename.text} {name}"
-                    authors.append(name)
-
-            # Journal
-            journal_elem = article.find(".//Journal/Title")
-            journal = journal_elem.text if journal_elem is not None else None
-
-            # Year
-            year_elem = article.find(".//PubDate/Year")
-            year = year_elem.text if year_elem is not None else None
-
-            # DOI
-            doi = None
-            for article_id in article.findall(".//ArticleId"):
-                if article_id.get("IdType") == "doi":
-                    doi = article_id.text
-                    break
-
-            paper = PubMedPaper(
-                pmid=pmid,
-                title=title or "",
-                abstract=abstract,
-                authors=authors,
-                journal=journal,
-                year=year,
-                doi=doi,
-            )
 
             # Cache the result
             if self.cache:
@@ -348,30 +318,123 @@ class PubMedClient:
         return self.fetch_many(pmids)
 
 
+MONTHS = {
+    m: i
+    for i, m in enumerate(
+        [
+            "Jan",
+            "Feb",
+            "Mar",
+            "Apr",
+            "May",
+            "Jun",
+            "Jul",
+            "Aug",
+            "Sep",
+            "Oct",
+            "Nov",
+            "Dec",
+        ],
+        1,
+    )
+}
+
+
+def _full_date(elem: ElementTree.Element | None) -> str | None:
+    """An ISO date from a PubMed date element, only if year, month and day are all given.
+
+    >>> _full_date(ElementTree.fromstring("<D><Year>2021</Year><Month>Feb</Month><Day>9</Day></D>"))
+    '2021-02-09'
+    >>> _full_date(ElementTree.fromstring("<D><Year>2021</Year><Month>02</Month></D>")) is None
+    True
+    """
+    if elem is None:
+        return None
+    year, month, day = (elem.findtext(tag) for tag in ("Year", "Month", "Day"))
+    if not (year and month and day):
+        return None
+    month_number = MONTHS[month[:3]] if month[:3] in MONTHS else int(month)
+    return f"{int(year):04d}-{month_number:02d}-{int(day):02d}"
+
+
+def parse_article(pmid: str, xml: bytes) -> PubMedPaper | None:
+    """Parse an efetch XML response into a PubMedPaper (None if it holds no article).
+
+    The publication date is the electronic article date, else the journal issue date, and
+    only when it is a full date; ``year`` is the issue year.
+
+    >>> parse_article("1", b"<PubmedArticleSet/>") is None
+    True
+    """
+    root = ElementTree.fromstring(xml)
+    article = root.find(".//PubmedArticle")
+    if article is None:
+        return None
+
+    abstract_parts = [
+        e.text for e in article.findall(".//Abstract/AbstractText") if e.text
+    ]
+
+    authors = []
+    for author in article.findall(".//Author"):
+        lastname = author.find("LastName")
+        forename = author.find("ForeName")
+        if lastname is not None:
+            name = lastname.text or ""
+            if forename is not None and forename.text:
+                name = f"{forename.text} {name}"
+            authors.append(name)
+
+    doi = next(
+        (a.text for a in article.findall(".//ArticleId") if a.get("IdType") == "doi"),
+        None,
+    )
+    pub_date = article.find(".//JournalIssue/PubDate")
+    if pub_date is None:
+        pub_date = article.find(".//PubDate")
+
+    return PubMedPaper(
+        pmid=pmid,
+        title=article.findtext(".//ArticleTitle") or "",
+        abstract="\n".join(abstract_parts) or None,
+        authors=authors,
+        journal=article.findtext(".//Journal/Title"),
+        year=pub_date.findtext("Year") if pub_date is not None else None,
+        doi=doi,
+        publication_date=_full_date(article.find(".//ArticleDate"))
+        or _full_date(pub_date),
+        publication_types=[
+            (e.get("UI") or "", e.text or "")
+            for e in article.findall(".//PublicationTypeList/PublicationType")
+            if e.get("UI")
+        ],
+    )
+
+
 def build_search_query(
     disease_label: str,
     synonym: str | None = None,
     additional_terms: list[str] | None = None,
 ) -> str:
-    """Build a PubMed search query for a disease assertion.
+    """Build a PubMed search query for a claim: its terms OR-ed, each in title or abstract.
+
+    Empty terms are dropped and a term repeated in another case is used once.
 
     Args:
         disease_label: The disease name/label.
-        synonym: Optional synonym to include.
+        synonym: Optional second term (synonym text, parent or mapped term label).
         additional_terms: Additional search terms.
 
     Returns:
         PubMed search query string.
+
+    >>> build_search_query("asthma", "bronchial asthma")
+    '("asthma"[Title/Abstract] OR "bronchial asthma"[Title/Abstract])'
+    >>> build_search_query("", "Asthma", ["asthma"])
+    '("Asthma"[Title/Abstract])'
     """
-    terms = [f'"{disease_label}"[Title/Abstract]']
-
-    if synonym and synonym.lower() != disease_label.lower():
-        terms.append(f'"{synonym}"[Title/Abstract]')
-
-    if additional_terms:
-        for term in additional_terms:
-            terms.append(f'"{term}"[Title/Abstract]')
-
-    # Combine with OR and add disease filter
-    query = f"({' OR '.join(terms)})"
-    return query
+    terms: list[str] = []
+    for term in [disease_label, synonym or "", *(additional_terms or [])]:
+        if term and term.casefold() not in {t.casefold() for t in terms}:
+            terms.append(term)
+    return "(" + " OR ".join(f'"{t}"[Title/Abstract]' for t in terms) + ")"

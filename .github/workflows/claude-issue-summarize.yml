@@ -1,9 +1,12 @@
+# Automatically summarize GitHub issues using Claude Code
 name: Claude Issue summarize
-description: "Automatically summarize GitHub issues using Claude Code"
 
+# Manual only: the triggers are off until the repository has ANTHROPIC_API_KEY.
+# To turn it back on:
+#   issues:
+#     types: [opened]
 on:
-  issues:
-    types: [opened]
+  workflow_dispatch:
 
 jobs:
   summarize-issue:
@@ -12,14 +15,22 @@ jobs:
     permissions:
       contents: read
       issues: write
+    # Secrets cannot be read in a job-level `if`; the steps below check this instead.
+    env:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
     steps:
+      - name: Skip without an Anthropic key
+        if: env.ANTHROPIC_API_KEY == ''
+        run: echo "::notice::ANTHROPIC_API_KEY is not set; skipping issue summaries."
+
       - name: Checkout repository
+        if: env.ANTHROPIC_API_KEY != ''
         uses: actions/checkout@v4
 
       - name: Run Claude Issue summarize
+        if: env.ANTHROPIC_API_KEY != ''
         uses: ./.github/actions/claude-issue-summarize-action
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           cborg_api_key: ${{ secrets.CBORG_API_KEY }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          install_artl_mcp: "true"

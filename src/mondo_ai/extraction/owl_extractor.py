@@ -1,15 +1,20 @@
 """OWL file extraction using pyoxigraph.
 
-This module extracts labels, synonyms, definitions, and hierarchy
-from OWL ontology files, including annotation provenance (ORCIDs, PMIDs).
+This module converts a source ontology (RDF/XML or Turtle) into a ResourceSnapshot:
+labels, synonyms (with scope, type and PMIDs from their axiom annotations),
+definitions, named parents, classification parents (part_of), xrefs and skos mappings
+(with ORDO's ECC precision code), and deprecation.
+
+Every property is read with one SPARQL query over the whole file rather than one query
+per entity, so large sources (ICD-10-CM has ~98,000 classes) extract in seconds.
 
 Example:
     >>> from mondo_ai.extraction.owl_extractor import OWLExtractor
-    >>> extractor = OWLExtractor()
-    >>> snapshot = extractor.extract("path/to/ontology.owl", "doid")  # doctest: +SKIP
+    >>> snapshot = OWLExtractor().extract("doid.owl", "doid", iri_filter="DOID_")  # doctest: +SKIP
 """
 
 import re
+from collections import defaultdict
 from datetime import datetime, timezone
 from hashlib import sha256
 from pathlib import Path
@@ -19,6 +24,7 @@ import curies
 import pyoxigraph as px
 
 from mondo_ai.datamodel import (
+    EntityMapping,
     EntitySnapshot,
     ResourceSnapshot,
     Synonym,
@@ -26,8 +32,63 @@ from mondo_ai.datamodel import (
 )
 
 # Patterns for extracting ORCIDs and PMIDs from annotation sources
-ORCID_PATTERN = re.compile(r"ORCID:(\d{4}-\d{4}-\d{4}-\d{3}[\dX])", re.IGNORECASE)
+ORCID_PATTERN = re.compile(r"(?:ORCID:|orcid\.org/)(\d{4}-\d{4}-\d{4}-\d{3}[\dX])", re.IGNORECASE)
 PMID_PATTERN = re.compile(r"PMID:(\d+)", re.IGNORECASE)
+
+OBO_IN_OWL = "http://www.geneontology.org/formats/oboInOwl#"
+SKOS = "http://www.w3.org/2004/02/skos/core#"
+EFO = "http://www.ebi.ac.uk/efo/"
+IAO_DEFINITION = "http://purl.obolibrary.org/obo/IAO_0000115"
+EFO_DEFINITION = f"{EFO}definition"
+HAS_DBXREF = f"{OBO_IN_OWL}hasDbXref"
+PART_OF = "http://purl.obolibrary.org/obo/BFO_0000050"
+# ORDO annotates each xref with its precision (ECC) under this property.
+ECC_PROPERTY = "http://purl.obolibrary.org/obo/ECO_0000218"
+
+SYNONYM_PREDICATES = {
+    f"{OBO_IN_OWL}hasExactSynonym": SynonymScope.EXACT,
+    f"{OBO_IN_OWL}hasNarrowSynonym": SynonymScope.NARROW,
+    f"{OBO_IN_OWL}hasBroadSynonym": SynonymScope.BROAD,
+    f"{OBO_IN_OWL}hasRelatedSynonym": SynonymScope.RELATED,
+    # EFO alternative_term used by ORDO (treated as EXACT)
+    f"{EFO}alternative_term": SynonymScope.EXACT,
+}
+
+MAPPING_PREDICATES = {
+    HAS_DBXREF: "oboInOwl:hasDbXref",
+    f"{SKOS}exactMatch": "skos:exactMatch",
+    f"{SKOS}closeMatch": "skos:closeMatch",
+    f"{SKOS}broadMatch": "skos:broadMatch",
+    f"{SKOS}narrowMatch": "skos:narrowMatch",
+    f"{SKOS}relatedMatch": "skos:relatedMatch",
+}
+
+# Xref prefixes as written by the sources, normalised to the prefixes Mondo's SSSOM uses.
+XREF_PREFIX_SYNONYMS = {
+    "MIM": "OMIM",
+    "ORDO": "Orphanet",
+    "ORPHA": "Orphanet",
+    "ICD-10": "ICD10WHO",
+    "ICD10": "ICD10WHO",
+    "MeSH": "MESH",
+    "MSH": "MESH",
+    "NCI": "NCIT",
+    "UMLS_CUI": "UMLS",
+}
+
+
+def normalize_xref(xref: str) -> str:
+    """Normalise a source xref CURIE to the prefix Mondo uses.
+
+    >>> normalize_xref("MIM:219700")
+    'OMIM:219700'
+    >>> normalize_xref("DOID:4")
+    'DOID:4'
+    """
+    if ":" not in xref:
+        return xref
+    prefix, local = xref.split(":", 1)
+    return f"{XREF_PREFIX_SYNONYMS.get(prefix, prefix)}:{local.strip()}"
 
 
 def extract_provenance_from_sources(sources: list[str]) -> tuple[list[str], list[str]]:
@@ -46,62 +107,23 @@ def extract_provenance_from_sources(sources: list[str]) -> tuple[list[str], list
         ['0000-0001-5208-3432']
         >>> pmids
         ['12345678']
+        >>> extract_provenance_from_sources(["https://orcid.org/0000-0002-4142-7153"])[0]
+        ['0000-0002-4142-7153']
     """
     orcids: list[str] = []
     pmids: list[str] = []
-
     for source in sources:
-        # Extract ORCIDs
         for match in ORCID_PATTERN.finditer(source):
-            orcid = match.group(1)
-            if orcid not in orcids:
-                orcids.append(orcid)
-
-        # Extract PMIDs
+            if match.group(1) not in orcids:
+                orcids.append(match.group(1))
         for match in PMID_PATTERN.finditer(source):
-            pmid = match.group(1)
-            if pmid not in pmids:
-                pmids.append(pmid)
-
+            if match.group(1) not in pmids:
+                pmids.append(match.group(1))
     return orcids, pmids
-
-# OWL/RDF namespaces
-RDFS_LABEL = "http://www.w3.org/2000/01/rdf-schema#label"
-RDFS_SUBCLASS_OF = "http://www.w3.org/2000/01/rdf-schema#subClassOf"
-OWL_DEPRECATED = "http://www.w3.org/2002/07/owl#deprecated"
-OWL_ONTOLOGY = "http://www.w3.org/2002/07/owl#Ontology"
-OWL_VERSION_IRI = "http://www.w3.org/2002/07/owl#versionIRI"
-OWL_VERSION_INFO = "http://www.w3.org/2002/07/owl#versionInfo"
-OWL_AXIOM = "http://www.w3.org/2002/07/owl#Axiom"
-OWL_ANNOTATED_SOURCE = "http://www.w3.org/2002/07/owl#annotatedSource"
-OWL_ANNOTATED_PROPERTY = "http://www.w3.org/2002/07/owl#annotatedProperty"
-OWL_ANNOTATED_TARGET = "http://www.w3.org/2002/07/owl#annotatedTarget"
-OBO_IN_OWL = "http://www.geneontology.org/formats/oboInOwl#"
-IAO_DEFINITION = "http://purl.obolibrary.org/obo/IAO_0000115"
-SKOS_EXACT_MATCH = "http://www.w3.org/2004/02/skos/core#exactMatch"
-SKOS_CLOSE_MATCH = "http://www.w3.org/2004/02/skos/core#closeMatch"
-HAS_DBXREF = f"{OBO_IN_OWL}hasDbXref"
-OIO_SOURCE = f"{OBO_IN_OWL}source"
-
-# EFO namespace (used by ORDO)
-EFO = "http://www.ebi.ac.uk/efo/"
-
-# Synonym predicates
-SYNONYM_PREDICATES = {
-    f"{OBO_IN_OWL}hasExactSynonym": SynonymScope.EXACT,
-    f"{OBO_IN_OWL}hasNarrowSynonym": SynonymScope.NARROW,
-    f"{OBO_IN_OWL}hasBroadSynonym": SynonymScope.BROAD,
-    f"{OBO_IN_OWL}hasRelatedSynonym": SynonymScope.RELATED,
-    # EFO alternative_term used by ORDO (treat as EXACT)
-    f"{EFO}alternative_term": SynonymScope.EXACT,
-}
 
 
 def _get_converter() -> curies.Converter:
-    """Get a CURIE converter with standard biomedical prefixes.
-
-    Uses the Bioregistry as the source of prefix mappings.
-    """
+    """Get a CURIE converter with standard biomedical prefixes (Bioregistry OBO context)."""
     return curies.get_obo_converter()
 
 
@@ -112,36 +134,48 @@ def _curie_from_iri(iri: str, converter: curies.Converter | None = None) -> str:
     'DOID:4'
     >>> _curie_from_iri("http://purl.obolibrary.org/obo/MONDO_0000001")
     'MONDO:0000001'
+    >>> _curie_from_iri("https://omim.org/entry/219700")
+    'OMIM:219700'
+    >>> _curie_from_iri("http://purl.bioontology.org/ontology/ICD10CM/Q90.0")
+    'ICD10CM:Q90.0'
     """
     if converter is None:
         converter = _get_converter()
-
-    # Try to compress using the curies converter
     curie = converter.compress(iri)
     if curie:
         return curie
-
-    # Fallback: Handle special cases not in standard converter
-    # OMIM entry format (https://omim.org/entry/...)
     if "omim.org/entry/" in iri:
-        local = iri.split("/entry/")[-1]
-        return f"OMIM:{local}"
-    # OMIM phenotypic series format
+        return f"OMIM:{iri.split('/entry/')[-1]}"
     if "omim.org/phenotypicSeries/PS" in iri:
-        local = iri.split("/phenotypicSeries/PS")[-1]
-        return f"OMIMPS:{local}"
-    # Orphanet (http://www.orpha.net/ORDO/Orphanet_...)
+        return f"OMIMPS:{iri.split('/phenotypicSeries/PS')[-1]}"
     if "Orphanet_" in iri:
-        local = iri.split("Orphanet_")[-1]
-        return f"Orphanet:{local}"
-    # OBO PURLs not handled by converter
+        return f"Orphanet:{iri.split('Orphanet_')[-1]}"
+    if "purl.bioontology.org/ontology/ICD10CM/" in iri:
+        return f"ICD10CM:{iri.split('/ICD10CM/')[-1]}"
+    if "linkedlifedata.com/resource/umls/id/" in iri:
+        return f"UMLS:{iri.split('/id/')[-1]}"
     if "/obo/" in iri:
         parts = iri.split("/obo/")[-1]
         if "_" in parts:
             prefix, local = parts.rsplit("_", 1)
             return f"{prefix}:{local}"
-    # Fallback: return original IRI
     return iri
+
+
+def _value(term: object) -> str:
+    """The lexical value of a pyoxigraph term (IRI string or literal text)."""
+    return str(getattr(term, "value", term))
+
+
+def _ecc_code(annotation: str) -> str:
+    """The ECC code at the start of an ORDO precision annotation.
+
+    >>> _ecc_code("E (Exact mapping: the two concepts are equivalent)")
+    'E'
+    >>> _ecc_code("NTBT (ORPHA code's Narrower Term maps to a Broader Term)")
+    'NTBT'
+    """
+    return annotation.split(" ", 1)[0].strip()
 
 
 class OWLExtractor:
@@ -152,57 +186,24 @@ class OWLExtractor:
         self._store: px.Store | None = None
         self._converter: curies.Converter | None = None
 
-    def _get_curie_converter(self) -> curies.Converter:
-        """Get or create the CURIE converter."""
+    def _curie(self, iri: str) -> str:
         if self._converter is None:
             self._converter = _get_converter()
-        return self._converter
+        return _curie_from_iri(iri, self._converter)
 
     def _load_owl(self, path: Path) -> px.Store:
-        """Load OWL file into pyoxigraph store."""
+        """Load an RDF/XML (or Turtle) file into an in-memory pyoxigraph store."""
         store = px.Store()
-        # Try RDF/XML first, then Turtle
-        content = path.read_bytes()
-        try:
-            store.load(content, format=px.RdfFormat.RDF_XML)
-        except Exception:
-            try:
-                store.load(content, format=px.RdfFormat.TURTLE)
-            except Exception:
-                # Try N-Triples as fallback
-                store.load(content, format=px.RdfFormat.N_TRIPLES)
+        fmt = px.RdfFormat.TURTLE if path.suffix in (".ttl", ".turtle") else px.RdfFormat.RDF_XML
+        store.bulk_load(path=str(path), format=fmt)
         return store
 
-    def _query(self, sparql: str, variables: list[str] | None = None) -> Iterator[dict]:
-        """Execute SPARQL query and yield results as dicts.
-
-        Args:
-            sparql: SPARQL query string.
-            variables: List of variable names to extract (without ?).
-        """
+    def _rows(self, sparql: str) -> Iterator[px.QuerySolution]:
         if self._store is None:
             raise RuntimeError("Store not loaded")
-
-        # Extract variable names from SELECT clause if not provided
-        if variables is None:
-            import re
-            match = re.search(r"SELECT\s+(?:DISTINCT\s+)?(.*?)\s+WHERE", sparql, re.IGNORECASE)
-            if match:
-                var_str = match.group(1)
-                variables = [v.strip().lstrip("?") for v in var_str.split() if v.startswith("?")]
-            else:
-                variables = []
-
         result = self._store.query(sparql)
         assert isinstance(result, px.QuerySolutions)  # SELECT queries yield solutions
-        for solution in result:
-            row = {}
-            for var in variables:
-                try:
-                    row[var] = solution[var]
-                except KeyError:
-                    row[var] = None
-            yield row
+        yield from result
 
     def extract(
         self,
@@ -216,30 +217,24 @@ class OWLExtractor:
         """Extract entities from an OWL file.
 
         Args:
-            owl_path: Path to the OWL file.
+            owl_path: Path to the OWL file (RDF/XML or Turtle).
             resource_id: Identifier for this resource (e.g., "doid").
-            resource_name: Human-readable name (defaults to resource_id).
+            resource_name: Human-readable name (defaults to resource_id upper-cased).
             limit: Maximum number of entities to extract.
             iri_filter: IRI substring to filter entities (e.g., "DOID_", "Orphanet_").
             skip_deprecated: Skip deprecated/obsolete entities.
 
         Returns:
-            ResourceSnapshot with extracted entities.
+            ResourceSnapshot with extracted entities, sorted by id.
         """
         path = Path(owl_path)
         self._store = self._load_owl(path)
-
-        # Calculate checksum
         checksum = sha256(path.read_bytes()).hexdigest()
+        version = self._ontology_annotation("versionIRI") or self._ontology_annotation("versionInfo") or "unknown"
 
-        # Extract version from ontology
-        version = self._get_version_iri() or self._get_version_info() or "unknown"
-
-        entities = list(self._extract_entities(
-            limit=limit,
-            iri_filter=iri_filter,
-            skip_deprecated=skip_deprecated,
-        ))
+        entities = self._extract_entities(iri_filter, skip_deprecated)
+        if limit:
+            entities = entities[:limit]
 
         return ResourceSnapshot(
             resource_id=resource_id,
@@ -252,288 +247,125 @@ class OWLExtractor:
             entities=entities,
         )
 
-    def _extract_entities(
-        self,
-        limit: int | None = None,
-        iri_filter: str | None = None,
-        skip_deprecated: bool = True,
-    ) -> Iterator[EntitySnapshot]:
-        """Extract all entities with their properties.
+    def _ontology_annotation(self, prop: str) -> str | None:
+        for row in self._rows(
+            f"PREFIX owl: <http://www.w3.org/2002/07/owl#> SELECT ?v WHERE {{ ?o a owl:Ontology ; owl:{prop} ?v }}"
+        ):
+            return _value(row["v"])
+        return None
 
-        Args:
-            limit: Maximum number of entities to extract.
-            iri_filter: IRI substring to filter entities.
-            skip_deprecated: Skip deprecated/obsolete entities.
-        """
-        # Build query with optional IRI filter
-        filter_clause = "FILTER(isIRI(?entity))"
-        if iri_filter:
-            filter_clause = f"FILTER(isIRI(?entity) && CONTAINS(STR(?entity), '{iri_filter}'))"
+    def _extract_entities(self, iri_filter: str | None, skip_deprecated: bool) -> list[EntitySnapshot]:
+        """Read every property in one query each and assemble one EntitySnapshot per class."""
+        keep = f"FILTER(isIRI(?e) && CONTAINS(STR(?e), '{iri_filter}'))" if iri_filter else "FILTER(isIRI(?e))"
+        prefixes = (
+            "PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#> "
+            "PREFIX owl: <http://www.w3.org/2002/07/owl#> "
+            f"PREFIX oio: <{OBO_IN_OWL}> "
+        )
 
-        query = f"""
-        PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-        PREFIX owl: <http://www.w3.org/2002/07/owl#>
+        labels: dict[str, str] = {}
+        for row in self._rows(f"{prefixes} SELECT ?e ?l WHERE {{ ?e a owl:Class ; rdfs:label ?l . {keep} }}"):
+            labels.setdefault(_value(row["e"]), _value(row["l"]))
 
-        SELECT DISTINCT ?entity ?label WHERE {{
-            ?entity a owl:Class .
-            ?entity rdfs:label ?label .
-            {filter_clause}
-        }}
-        """
-        # Note: We don't apply LIMIT here, as we filter after checking deprecated status
-        # Instead we'll extract more and filter
+        deprecated = {
+            _value(row["e"])
+            for row in self._rows(f"{prefixes} SELECT ?e ?d WHERE {{ ?e owl:deprecated ?d . {keep} }}")
+            if _value(row["d"]).lower() == "true"
+        }
 
-        entity_labels: dict[str, str] = {}
-        for row in self._query(query):
-            entity_node = row["entity"]
-            # Extract IRI value from NamedNode
-            if hasattr(entity_node, "value"):
-                entity_iri = entity_node.value
-            else:
-                entity_iri = str(entity_node)
-                # Remove angle brackets if present
-                if entity_iri.startswith("<") and entity_iri.endswith(">"):
-                    entity_iri = entity_iri[1:-1]
+        # Axiom annotations: synonym types and sources, xref precision, definition xrefs.
+        syn_types: dict[tuple[str, str, str], str] = {}
+        syn_sources: dict[tuple[str, str, str], list[str]] = defaultdict(list)
+        ecc: dict[tuple[str, str], str] = {}
+        def_xrefs: dict[str, list[str]] = defaultdict(list)
+        for row in self._rows(
+            f"""{prefixes} SELECT ?e ?p ?t ?k ?v WHERE {{
+                ?ax owl:annotatedSource ?e ; owl:annotatedProperty ?p ; owl:annotatedTarget ?t ; ?k ?v .
+                FILTER(?k IN (oio:hasSynonymType, oio:source, oio:hasDbXref, <{ECC_PROPERTY}>))
+                {keep} }}"""
+        ):
+            e, p, t, k, v = (_value(row[x]) for x in ("e", "p", "t", "k", "v"))
+            if p in SYNONYM_PREDICATES:
+                if k == f"{OBO_IN_OWL}hasSynonymType":
+                    syn_types[(e, p, t)] = self._curie(v)
+                elif k in (f"{OBO_IN_OWL}source", HAS_DBXREF):
+                    syn_sources[(e, p, t)].append(v)
+            elif p == HAS_DBXREF and k == ECC_PROPERTY:
+                ecc[(e, t)] = _ecc_code(v)
+            elif p in (IAO_DEFINITION, EFO_DEFINITION) and k == HAS_DBXREF:
+                def_xrefs[e].append(v)
 
-            label_node = row["label"]
-            if hasattr(label_node, "value"):
-                label = label_node.value
-            else:
-                label = str(label_node)
-            entity_labels[entity_iri] = label
-
-        # Process each entity
-        count = 0
-        converter = self._get_curie_converter()
-        for entity_iri, label in entity_labels.items():
-            # Check if deprecated first (before doing expensive work)
-            deprecated = self._is_deprecated(entity_iri)
-            if skip_deprecated and deprecated:
+        synonyms: dict[str, list[Synonym]] = defaultdict(list)
+        seen_syn: set[tuple[str, str, str]] = set()
+        preds = " ".join(f"<{p}>" for p in SYNONYM_PREDICATES)
+        for row in self._rows(f"{prefixes} SELECT ?e ?p ?v WHERE {{ VALUES ?p {{ {preds} }} ?e ?p ?v . {keep} }}"):
+            e, p, v = _value(row["e"]), _value(row["p"]), _value(row["v"])
+            key = (e, p, v)
+            if key in seen_syn:
                 continue
-
-            curie = _curie_from_iri(entity_iri, converter)
-
-            # Get synonyms (with provenance)
-            synonyms = list(self._get_synonyms(entity_iri))
-
-            # Get parents
-            parents = list(self._get_parents(entity_iri, converter))
-
-            # Get definition with provenance
-            definition = self._get_definition(entity_iri)
-            def_orcids = None
-            def_pmids = None
-            if definition:
-                # Get dbxrefs from definition axiom (often contain PMIDs)
-                def_xrefs = self._get_definition_dbxrefs(entity_iri)
-                def_orcids, def_pmids = extract_provenance_from_sources(def_xrefs)
-                def_orcids = def_orcids if def_orcids else None
-                def_pmids = def_pmids if def_pmids else None
-
-            yield EntitySnapshot(
-                id=curie,
-                label=label,
-                synonyms=synonyms,
-                definition=definition,
-                definition_orcids=def_orcids,
-                definition_pmids=def_pmids,
-                parents=parents,
-                mappings=[],
-                deprecated=deprecated,
+            seen_syn.add(key)
+            orcids, pmids = extract_provenance_from_sources(syn_sources.get(key, []))
+            synonyms[e].append(
+                Synonym(
+                    value=v,
+                    scope=SYNONYM_PREDICATES[p],
+                    type=syn_types.get(key),
+                    orcids=orcids,
+                    pmids=pmids,
+                )
             )
 
-            count += 1
-            if limit and count >= limit:
-                return
+        parents: dict[str, list[str]] = defaultdict(list)
+        for row in self._rows(f"{prefixes} SELECT ?e ?p WHERE {{ ?e rdfs:subClassOf ?p . FILTER(isIRI(?p)) {keep} }}"):
+            parents[_value(row["e"])].append(self._curie(_value(row["p"])))
 
-    def _get_annotation_sources(
-        self, entity_iri: str, property_iri: str, target_value: str
-    ) -> list[str]:
-        """Get source annotations for a specific axiom.
+        classification: dict[str, list[str]] = defaultdict(list)
+        for row in self._rows(
+            f"""{prefixes} SELECT ?e ?p WHERE {{
+                ?e rdfs:subClassOf ?r . ?r owl:onProperty <{PART_OF}> ; owl:someValuesFrom ?p .
+                FILTER(isIRI(?p)) {keep} }}"""
+        ):
+            classification[_value(row["e"])].append(self._curie(_value(row["p"])))
 
-        Finds reified axiom annotations where:
-        - owl:annotatedSource = entity_iri
-        - owl:annotatedProperty = property_iri
-        - owl:annotatedTarget = target_value
-        - oboInOwl:source = ?source
+        definitions: dict[str, str] = {}
+        for row in self._rows(
+            f"{prefixes} SELECT ?e ?d WHERE {{ VALUES ?p {{ <{IAO_DEFINITION}> <{EFO_DEFINITION}> }} ?e ?p ?d . {keep} }}"
+        ):
+            definitions.setdefault(_value(row["e"]), _value(row["d"]))
 
-        Args:
-            entity_iri: The entity IRI.
-            property_iri: The property IRI (e.g., hasExactSynonym).
-            target_value: The annotation target value.
+        mappings: dict[str, list[EntityMapping]] = defaultdict(list)
+        map_preds = " ".join(f"<{p}>" for p in MAPPING_PREDICATES)
+        for row in self._rows(f"{prefixes} SELECT ?e ?p ?x WHERE {{ VALUES ?p {{ {map_preds} }} ?e ?p ?x . {keep} }}"):
+            e, p, x = _value(row["e"]), _value(row["p"]), row["x"]
+            raw = _value(x)
+            target = self._curie(raw) if isinstance(x, px.NamedNode) else normalize_xref(raw)
+            mappings[e].append(
+                EntityMapping(object_id=target, predicate_id=MAPPING_PREDICATES[p], mapping_source=ecc.get((e, raw)))
+            )
 
-        Returns:
-            List of source annotation values.
-        """
-        # Escape quotes in target value for SPARQL
-        escaped_target = target_value.replace("\\", "\\\\").replace('"', '\\"')
-
-        query = f"""
-        PREFIX owl: <http://www.w3.org/2002/07/owl#>
-        PREFIX oboInOwl: <http://www.geneontology.org/formats/oboInOwl#>
-
-        SELECT ?source WHERE {{
-            ?axiom a owl:Axiom .
-            ?axiom owl:annotatedSource <{entity_iri}> .
-            ?axiom owl:annotatedProperty <{property_iri}> .
-            ?axiom owl:annotatedTarget "{escaped_target}" .
-            ?axiom oboInOwl:source ?source .
-        }}
-        """
-        sources = []
-        for row in self._query(query):
-            source = row["source"]
-            if hasattr(source, "value"):
-                source = source.value
-            if source:
-                sources.append(str(source))
-        return sources
-
-    def _get_definition_dbxrefs(self, entity_iri: str) -> list[str]:
-        """Get database xrefs from definition axiom annotations.
-
-        Args:
-            entity_iri: The entity IRI.
-
-        Returns:
-            List of dbxref values from the definition axiom.
-        """
-        query = f"""
-        PREFIX owl: <http://www.w3.org/2002/07/owl#>
-        PREFIX oboInOwl: <http://www.geneontology.org/formats/oboInOwl#>
-        PREFIX IAO: <http://purl.obolibrary.org/obo/IAO_>
-
-        SELECT ?xref WHERE {{
-            ?axiom a owl:Axiom .
-            ?axiom owl:annotatedSource <{entity_iri}> .
-            ?axiom owl:annotatedProperty IAO:0000115 .
-            ?axiom oboInOwl:hasDbXref ?xref .
-        }}
-        """
-        xrefs = []
-        for row in self._query(query):
-            xref = row["xref"]
-            if hasattr(xref, "value"):
-                xref = xref.value
-            if xref:
-                xrefs.append(str(xref))
-        return xrefs
-
-    def _get_synonyms(self, entity_iri: str) -> Iterator[Synonym]:
-        """Get all synonyms for an entity with provenance.
-
-        Extracts synonyms and their annotation sources, parsing ORCIDs
-        and PMIDs from the sources.
-        """
-        for pred_iri, scope in SYNONYM_PREDICATES.items():
-            query = f"""
-            SELECT ?value WHERE {{
-                <{entity_iri}> <{pred_iri}> ?value .
-            }}
-            """
-            for row in self._query(query):
-                value = row["value"]
-                if hasattr(value, "value"):
-                    value = value.value
-                value_str = str(value)
-
-                # Get source annotations for this synonym
-                sources = self._get_annotation_sources(entity_iri, pred_iri, value_str)
-                orcids, pmids = extract_provenance_from_sources(sources)
-
-                yield Synonym(
-                    value=value_str,
-                    scope=scope,
-                    orcids=orcids if orcids else None,
-                    pmids=pmids if pmids else None,
+        entities: list[EntitySnapshot] = []
+        for iri, label in labels.items():
+            is_deprecated = iri in deprecated
+            if skip_deprecated and is_deprecated:
+                continue
+            definition = definitions.get(iri)
+            def_orcids, def_pmids = extract_provenance_from_sources(def_xrefs.get(iri, [])) if definition else ([], [])
+            entities.append(
+                EntitySnapshot(
+                    id=self._curie(iri),
+                    label=label,
+                    synonyms=synonyms.get(iri, []),
+                    definition=definition,
+                    definition_orcids=def_orcids,
+                    definition_pmids=def_pmids,
+                    parents=sorted(set(parents.get(iri, []))),
+                    classification_parents=sorted(set(classification.get(iri, []))),
+                    mappings=mappings.get(iri, []),
+                    deprecated=is_deprecated,
                 )
-
-    def _get_parents(
-        self, entity_iri: str, converter: curies.Converter | None = None
-    ) -> Iterator[str]:
-        """Get direct parent classes."""
-        query = f"""
-        PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-        SELECT ?parent WHERE {{
-            <{entity_iri}> rdfs:subClassOf ?parent .
-            FILTER(isIRI(?parent))
-        }}
-        """
-        for row in self._query(query):
-            parent_node = row["parent"]
-            if hasattr(parent_node, "value"):
-                parent_iri = parent_node.value
-            else:
-                parent_iri = str(parent_node)
-            yield _curie_from_iri(parent_iri, converter)
-
-    def _get_definition(self, entity_iri: str) -> str | None:
-        """Get definition for an entity."""
-        query = f"""
-        SELECT ?def WHERE {{
-            <{entity_iri}> <{IAO_DEFINITION}> ?def .
-        }}
-        """
-        for row in self._query(query):
-            value = row["def"]
-            if hasattr(value, "value"):
-                return value.value
-            return str(value)
-        return None
-
-    def _is_deprecated(self, entity_iri: str) -> bool:
-        """Check if entity is deprecated."""
-        query = f"""
-        SELECT ?dep WHERE {{
-            <{entity_iri}> <{OWL_DEPRECATED}> ?dep .
-        }}
-        """
-        for row in self._query(query):
-            value = row["dep"]
-            if hasattr(value, "value"):
-                return value.value == "true"
-            return str(value).lower() == "true"
-        return False
-
-    def _get_version_iri(self) -> str | None:
-        """Extract the owl:versionIRI from the ontology.
-
-        Returns:
-            The versionIRI as a string, or None if not found.
-        """
-        query = """
-        PREFIX owl: <http://www.w3.org/2002/07/owl#>
-        SELECT ?versionIRI WHERE {
-            ?ont a owl:Ontology .
-            ?ont owl:versionIRI ?versionIRI .
-        }
-        """
-        for row in self._query(query):
-            version_node = row["versionIRI"]
-            if hasattr(version_node, "value"):
-                return version_node.value
-            return str(version_node)
-        return None
-
-    def _get_version_info(self) -> str | None:
-        """Extract the owl:versionInfo from the ontology (fallback).
-
-        Returns:
-            The versionInfo string, or None if not found.
-        """
-        query = """
-        PREFIX owl: <http://www.w3.org/2002/07/owl#>
-        SELECT ?versionInfo WHERE {
-            ?ont a owl:Ontology .
-            ?ont owl:versionInfo ?versionInfo .
-        }
-        """
-        for row in self._query(query):
-            version_node = row["versionInfo"]
-            if hasattr(version_node, "value"):
-                return version_node.value
-            return str(version_node)
-        return None
+            )
+        entities.sort(key=lambda e: e.id)
+        return entities
 
 
 def extract_synonyms_sample(
@@ -541,24 +373,18 @@ def extract_synonyms_sample(
     resource_id: str,
     count: int = 20,
 ) -> list[tuple[str, str, Synonym]]:
-    """Extract a sample of synonyms from an OWL file.
+    """Extract a sample of exact synonyms from an OWL file.
 
     Returns list of (entity_curie, entity_label, synonym) tuples.
-
-    Example:
-        >>> # synonyms = extract_synonyms_sample("doid.owl", "doid", count=20)
     """
-    extractor = OWLExtractor()
-    snapshot = extractor.extract(owl_path, resource_id, limit=count * 5)
-
+    snapshot = OWLExtractor().extract(owl_path, resource_id)
     results: list[tuple[str, str, Synonym]] = []
     for entity in snapshot.entities or []:
-        if entity.synonyms:
-            for syn in entity.synonyms:
-                if syn.scope == SynonymScope.EXACT:
-                    results.append((entity.id, entity.label or "", syn))
-                    if len(results) >= count:
-                        return results
+        for syn in entity.synonyms or []:
+            if syn.scope == SynonymScope.EXACT:
+                results.append((entity.id, entity.label or "", syn))
+                if len(results) >= count:
+                    return results
     return results
 
 
@@ -571,23 +397,12 @@ def extract_hierarchy_sample(
 
     Returns list of (child_curie, child_label, parent_curie, parent_label) tuples.
     """
-    extractor = OWLExtractor()
-    snapshot = extractor.extract(owl_path, resource_id, limit=count * 3)
-
-    # Build label lookup
+    snapshot = OWLExtractor().extract(owl_path, resource_id)
     labels = {e.id: e.label or e.id for e in (snapshot.entities or [])}
-
     results: list[tuple[str, str, str, str]] = []
     for entity in snapshot.entities or []:
-        if entity.parents:
-            for parent_curie in entity.parents:
-                parent_label = labels.get(parent_curie, parent_curie)
-                results.append((
-                    entity.id,
-                    entity.label or entity.id,
-                    parent_curie,
-                    parent_label,
-                ))
-                if len(results) >= count:
-                    return results
+        for parent_curie in entity.parents or []:
+            results.append((entity.id, entity.label or entity.id, parent_curie, labels.get(parent_curie, parent_curie)))
+            if len(results) >= count:
+                return results
     return results

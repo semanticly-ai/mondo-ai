@@ -1,233 +1,228 @@
 {% extends "base.html" %}
-{% block title %}{{ packet.id }} - MondoAI{% endblock %}
+{% block title %}{{ p.id }} - MondoAI{% endblock %}
+
+{% macro publication(pub) %}
+    {% if pub.url %}<a href="{{ pub.url }}" target="_blank" rel="noopener">{{ pub.id }}</a>{% else %}<span class="mono">{{ pub.id }}</span>{% endif %}
+    {% if pub.label %} {{ pub.label }}{% endif %}
+{% endmacro %}
+
+{% macro render_item(item) %}
+<div class="evidence-item {{ item.kind }}">
+    {% if item.kind == 'claim' %}
+    <div style="font-weight:600; font-size:0.85rem; margin-bottom:0.4rem;">
+        Prior claim <span class="text-muted" style="font-weight:400;">({{ item.type }})</span>
+    </div>
+    <div style="margin-bottom:0.4rem;">
+        <span class="mono">{{ item.record_id }}</span> {{ item.predicate }}
+        {% if item.object and ':' in item.object and ' ' not in item.object %}<span class="mono">{{ item.object }}</span>{% else %}&#39;{{ item.object }}&#39;{% endif %}
+    </div>
+    <div class="field-grid" style="font-size:0.85rem;">
+        {% if item.record %}
+        <span class="field-label">Record</span>
+        <span>{{ item.record.label or '' }} <span class="text-muted mono">{{ item.record.id }}</span>
+            {% if item.record.obsolete %}<span class="badge badge-direction-disputes">obsolete</span>{% endif %}</span>
+        {% endif %}
+        {% if item.resource %}
+        <span class="field-label">Resource</span>
+        <span class="mono">{{ item.resource }}{% if item.record and item.record.release %} <span class="text-muted">({{ item.record.release }})</span>{% endif %}</span>
+        {% endif %}
+        {% if item.context %}
+        <span class="field-label">Context</span>
+        <span>{{ item.context|join(', ') }}</span>
+        {% endif %}
+        {% if item.resolution_chains %}
+        <span class="field-label">Resolved via</span>
+        <span class="mono">{{ item.resolution_chains|join('; ') }}</span>
+        {% endif %}
+        {% if item.publications %}
+        <span class="field-label">Cited</span>
+        <span>{% for pub in item.publications %}{{ publication(pub) }}{% if not loop.last %}, {% endif %}{% endfor %}</span>
+        {% endif %}
+    </div>
+
+    {% elif item.kind == 'record' %}
+    <div style="font-weight:600; font-size:0.85rem; margin-bottom:0.4rem;">ExternalRecord</div>
+    <div class="field-grid" style="font-size:0.85rem;">
+        <span class="field-label">Record</span>
+        <span>{{ item.label or '' }} <span class="text-muted mono">{{ item.id }}</span>
+            {% if item.obsolete %}<span class="badge badge-direction-disputes">obsolete</span>{% endif %}</span>
+        {% if item.resource %}
+        <span class="field-label">Resource</span>
+        <span class="mono">{{ item.resource }}{% if item.release %} <span class="text-muted">({{ item.release }})</span>{% endif %}</span>
+        {% endif %}
+    </div>
+
+    {% elif item.kind == 'score' %}
+    <div style="font-weight:600; font-size:0.85rem; margin-bottom:0.4rem;">ComputationalScore</div>
+    <div class="field-grid" style="font-size:0.85rem;">
+        <span class="field-label">Value</span>
+        <span><strong>{{ item.value }}</strong></span>
+        {% if item.parameters %}
+        <span class="field-label">Parameters</span>
+        <span class="mono">{{ item.parameters }}</span>
+        {% endif %}
+        {% if item.specified_by %}
+        <span class="field-label">Method</span>
+        <span class="mono">{{ item.specified_by|join(', ') }}{% if item.software_version %} <span class="text-muted">(v{{ item.software_version }})</span>{% endif %}</span>
+        {% endif %}
+    </div>
+
+    {% elif item.kind == 'publication' %}
+    <div style="font-size:0.85rem;"><strong>Publication</strong> {{ publication(item) }}</div>
+
+    {% elif item.kind == 'line' %}
+    <div style="font-size:0.85rem;">
+        <strong>Evidence line</strong> <a href="#{{ item.anchor }}" class="mono">{{ item.id }}</a>
+        {% if item.direction %}<span class="badge badge-direction-{{ item.direction }}">{{ item.direction }}</span>{% endif %}
+        {% if item.strength %}<span class="badge badge-strength-{{ item.strength }}">{{ item.strength }}</span>{% endif %}
+    </div>
+
+    {% else %}
+    <div class="text-muted" style="font-size:0.85rem;">{{ item.type }} <span class="mono">{{ item.id or '' }}</span></div>
+    {% endif %}
+</div>
+{% endmacro %}
+
 {% block content %}
+{% set st = p.statement %}
 <div class="detail-header">
     <a href="/packets" style="font-size:0.85rem;">&laquo; Back to list</a>
-    <h1 style="margin-top:0.5rem;">
-        {% if packet.statement and packet.statement.subject_label %}
-            {{ packet.statement.subject_label }}
-        {% else %}
-            Evidence Packet
-        {% endif %}
-    </h1>
-    <div class="packet-id">{{ packet.id }}</div>
+    <h1 style="margin-top:0.5rem;">{{ p.heading }}</h1>
+    <div class="packet-id">{{ p.id }}{% if p.version %} &middot; version {{ p.version }}{% endif %}</div>
 </div>
 
 <!-- Statement -->
 <div class="card">
-    <h2>Statement</h2>
-    {% if packet.statement %}
-    {% set stmt = packet.statement %}
+    <h2>Statement <span class="text-muted" style="font-size:0.85rem; font-weight:400;">{{ st.type }}</span></h2>
     <div class="field-grid">
         <span class="field-label">Subject</span>
-        <span>
-            {% if stmt.subject_label %}{{ stmt.subject_label }} {% endif %}
-            <span class="text-muted" style="font-family:var(--mono); font-size:0.85rem;">{{ stmt.subject or '' }}</span>
-        </span>
+        <span class="mono">{{ st.subject }}</span>
         <span class="field-label">Predicate</span>
-        <span>
-            {% if stmt.predicate %}
-                {{ stmt.predicate.label or stmt.predicate.code or '' }}
-                {% if stmt.predicate.code and stmt.predicate.label %}
-                <span class="text-muted" style="font-size:0.8rem;">({{ stmt.predicate.code }})</span>
-                {% endif %}
-            {% endif %}
-        </span>
+        <span>{{ st.predicate or '' }}
+            {% if st.predicate_code and st.predicate_code != st.predicate %}<span class="text-muted" style="font-size:0.8rem;">({{ st.predicate_code }})</span>{% endif %}</span>
         <span class="field-label">Object</span>
-        <span>
-            {% if stmt.object_label %}{{ stmt.object_label }} {% endif %}
-            {% if stmt.object and stmt.object != stmt.object_label %}
-            <span class="text-muted" style="font-family:var(--mono); font-size:0.85rem;">{{ stmt.object }}</span>
-            {% endif %}
-        </span>
-        {% if stmt.statement_text %}
+        <span>{{ st.object }}</span>
+        {% if st.text %}
         <span class="field-label">Text</span>
-        <span>{{ stmt.statement_text }}</span>
+        <span>{{ st.text }}</span>
         {% endif %}
-    </div>
-    {% endif %}
-</div>
-
-<!-- Status & Dates -->
-<div class="card">
-    <h2>Curation</h2>
-    <div class="field-grid">
-        <span class="field-label">Status</span>
-        <span><span class="badge badge-status-{{ packet.status or 'UNREVIEWED' }}">{{ packet.status or 'UNREVIEWED' }}</span></span>
-        {% if packet.created %}
-        <span class="field-label">Created</span>
-        <span>{{ packet.created }}</span>
-        {% endif %}
-        {% if packet.updated %}
-        <span class="field-label">Updated</span>
-        <span>{{ packet.updated }}</span>
-        {% endif %}
-    </div>
-</div>
-
-<!-- Evidence Synthesis -->
-{% if packet.evidence_synthesis %}
-<div class="card">
-    <h2>Evidence Synthesis</h2>
-    {% set synth = packet.evidence_synthesis %}
-    <div class="field-grid">
-        {% if synth.direction %}
-        <span class="field-label">Direction</span>
-        <span><span class="badge badge-direction-{{ synth.direction }}">{{ synth.direction }}</span></span>
-        {% endif %}
-        {% if synth.score %}
-        <span class="field-label">Score</span>
-        <span><strong>{{ "%.3f"|format(synth.score.value) }}</strong>
-            {% if synth.score.description %}
-            <span class="text-muted" style="font-size:0.85rem;">({{ synth.score.description }})</span>
-            {% endif %}
+        <span class="field-label">Review state</span>
+        <span><span class="badge badge-state-{{ st.review_state }}">{{ st.review_state or 'unknown' }}</span>
+            {% if st.proposing_channel %}<span class="text-muted" style="font-size:0.8rem;">via {{ st.proposing_channel }}</span>{% endif %}</span>
+        <span class="field-label">Inclusion score</span>
+        <span>
+            {% if st.score is not none %}<strong>S = {{ "%.3f"|format(st.score) }}</strong>{% else %}-{% endif %}
+            {% if st.strength %}<span class="badge badge-strength-{{ st.strength }}">{{ st.strength }}</span>{% endif %}
+            {% if st.direction %}<span class="badge badge-direction-{{ st.direction }}">{{ st.direction }}</span>{% endif %}
         </span>
+        {% if st.id %}
+        <span class="field-label">Statement id</span>
+        <span class="mono text-muted">{{ st.id }}</span>
         {% endif %}
     </div>
-    {% if synth.summary %}
-    <div style="margin-top: 0.75rem; padding: 0.75rem; background: #f8f9fa; border-radius: 4px; font-size: 0.9rem;">
-        {{ synth.summary }}
-    </div>
-    {% endif %}
 </div>
-{% endif %}
 
-<!-- Evidence Lines -->
-{% set lines = packet.has_evidence_lines or [] %}
-{% if lines %}
+<!-- Evidence lines -->
+{% if p.lines %}
 <div class="card">
-    <h2>Evidence Lines ({{ lines|length }})</h2>
-    {% for el in lines %}
-    <div style="margin-bottom: 1.5rem; {% if not loop.last %}border-bottom: 1px solid var(--border); padding-bottom: 1rem;{% endif %}">
-        <div style="display: flex; gap: 0.75rem; align-items: center; margin-bottom: 0.5rem;">
+    <h2>Evidence Lines ({{ p.lines|length }})</h2>
+    {% for line in p.lines %}
+    <div class="evidence-line" id="{{ line.anchor }}">
+        <div style="display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap; margin-bottom: 0.5rem;">
             <strong>Line {{ loop.index }}</strong>
-            {% if el.direction_of_evidence_provided %}
-            <span class="badge badge-direction-{{ el.direction_of_evidence_provided }}">{{ el.direction_of_evidence_provided }}</span>
+            {% if line.direction %}<span class="badge badge-direction-{{ line.direction }}">{{ line.direction }}</span>{% endif %}
+            {% if line.strength %}<span class="badge badge-strength-{{ line.strength }}">{{ line.strength }}</span>{% endif %}
+            {% if line.score is not none %}<span class="text-muted" style="font-size:0.85rem;">score {{ "%.3f"|format(line.score) }}</span>{% endif %}
+            {% if line.cluster %}<span class="badge badge-source">cluster {{ line.cluster }}</span>{% endif %}
+            <span class="mono text-muted" style="font-size:0.75rem;">{{ line.id }}</span>
+        </div>
+        {% if line.description %}<div style="margin-bottom:0.5rem;">{{ line.description }}</div>{% endif %}
+        <div class="field-grid" style="font-size:0.85rem;">
+            <span class="field-label">Interpreter</span>
+            <span><span class="mono">{{ line.contributor or '-' }}</span>
+                {% if line.method_type %}&middot; {{ line.method_type }}{% endif %}
+                {% if line.read_coverage %}&middot; <span class="text-muted">{{ line.read_coverage }}</span>{% endif %}</span>
+            {% if line.specified_by %}
+            <span class="field-label">Method</span>
+            <span class="mono">{{ line.specified_by|join(', ') }}</span>
             {% endif %}
-            {% if el.strength_of_evidence_provided %}
-            <span class="badge" style="background:#e9ecef;">{{ el.strength_of_evidence_provided }}</span>
+            {% if line.rule %}
+            <span class="field-label">Rule</span>
+            <span class="mono">{{ line.rule }}</span>
             {% endif %}
-            {% if el.score_of_evidence_provided is not none %}
-            <span class="text-muted" style="font-size:0.85rem;">Score: {{ "%.3f"|format(el.score_of_evidence_provided) }}</span>
+            {% if line.confidence is not none %}
+            <span class="field-label">Confidence</span>
+            <span>{{ "%.2f"|format(line.confidence) }}</span>
+            {% endif %}
+            {% if line.last_confirmed_against %}
+            <span class="field-label">Confirmed against</span>
+            <span class="mono">{{ line.last_confirmed_against }}{% if line.date_attached %} <span class="text-muted">(attached {{ line.date_attached }})</span>{% endif %}</span>
             {% endif %}
         </div>
-
-        {% for item in el.has_evidence_items or [] %}
-        {% set item_type = item.type or item.__class__.__name__ %}
-        {% if 'Concordance' in item_type %}
-            {% set item_class = 'concordance' %}
-        {% elif 'Document' in item_type %}
-            {% set item_class = 'document' %}
-        {% elif 'Agent' in item_type %}
-            {% set item_class = 'agent' %}
-        {% elif 'Computational' in item_type %}
-            {% set item_class = 'computational' %}
-        {% else %}
-            {% set item_class = '' %}
-        {% endif %}
-
-        <div class="evidence-item {{ item_class }}">
-            <div style="font-weight:600; font-size:0.85rem; margin-bottom:0.4rem;">
-                {{ item_type }}
-                {% if item.evidence_item_type %}
-                <span class="text-muted" style="font-weight:400;">({{ item.evidence_item_type }})</span>
-                {% endif %}
-            </div>
-
-            {% if 'Concordance' in item_type %}
-            <div class="field-grid" style="font-size:0.85rem;">
-                {% if item.source_name %}
-                <span class="field-label">Source</span>
-                <span>{{ item.source_name }}{% if item.source_version %} ({{ item.source_version }}){% endif %}</span>
-                {% endif %}
-                {% if item.source_subject %}
-                <span class="field-label">Subject</span>
-                <span>{{ item.source_subject_label or '' }} <span class="text-muted" style="font-family:var(--mono);">{{ item.source_subject }}</span></span>
-                {% endif %}
-                {% if item.source_predicate %}
-                <span class="field-label">Predicate</span>
-                <span>{{ item.source_predicate_label or item.source_predicate }}</span>
-                {% endif %}
-                {% if item.source_object %}
-                <span class="field-label">Object</span>
-                <span>{{ item.source_object_label or item.source_object }}</span>
-                {% endif %}
-                {% if item.mapping_justification %}
-                <span class="field-label">Justification</span>
-                <span style="font-family:var(--mono); font-size:0.8rem;">{{ item.mapping_justification }}</span>
-                {% endif %}
-            </div>
-
-            {% elif 'Document' in item_type %}
-            <div class="field-grid" style="font-size:0.85rem;">
-                {% if item.title %}
-                <span class="field-label">Title</span>
-                <span>{{ item.title }}</span>
-                {% endif %}
-                {% if item.pmid %}
-                <span class="field-label">PMID</span>
-                <span style="font-family:var(--mono);">{{ item.pmid }}</span>
-                {% endif %}
-                {% if item.quote %}
-                <span class="field-label">Quote</span>
-                <span style="font-style:italic;">"{{ item.quote }}"</span>
-                {% endif %}
-            </div>
-
-            {% elif 'Agent' in item_type %}
-            <div class="field-grid" style="font-size:0.85rem;">
-                {% if item.contributor %}
-                <span class="field-label">Contributor</span>
-                <span>{{ item.contributor.name or item.contributor.id }}</span>
-                {% endif %}
-                {% if item.trust_level %}
-                <span class="field-label">Trust Level</span>
-                <span>{{ item.trust_level }}</span>
-                {% endif %}
-                {% if item.channel %}
-                <span class="field-label">Channel</span>
-                <span>{{ item.channel }}</span>
-                {% endif %}
-                {% if item.content %}
-                <span class="field-label">Content</span>
-                <span>{{ item.content }}</span>
-                {% endif %}
-            </div>
-
-            {% elif 'Computational' in item_type %}
-            <div class="field-grid" style="font-size:0.85rem;">
-                {% if item.method_name %}
-                <span class="field-label">Method</span>
-                <span>{{ item.method_name }}</span>
-                {% endif %}
-                {% if item.value %}
-                <span class="field-label">Value</span>
-                <span>{{ item.value }}</span>
-                {% endif %}
-                {% if item.software_version %}
-                <span class="field-label">Version</span>
-                <span>{{ item.software_version }}</span>
-                {% endif %}
-            </div>
-
-            {% else %}
-            <div class="text-muted" style="font-size:0.85rem;">
-                {{ item.id or '' }}
-            </div>
-            {% endif %}
-        </div>
+        {% if line.rationale %}<div class="rationale">{{ line.rationale }}</div>{% endif %}
+        {% for item in line['items'] %}
+        {{ render_item(item) }}
         {% endfor %}
     </div>
     {% endfor %}
 </div>
 {% endif %}
 
-<!-- Raw JSON toggle -->
+<!-- Direct evidence -->
+{% if p.has_evidence %}
 <div class="card">
-    <h2>
-        Raw Data
-        <button class="btn btn-sm btn-outline" onclick="document.getElementById('raw-json').style.display = document.getElementById('raw-json').style.display === 'none' ? 'block' : 'none'" style="margin-left:0.5rem;">Toggle</button>
-    </h2>
-    <pre id="raw-json" style="display:none; overflow-x:auto; font-size:0.8rem; padding:1rem; background:#f8f9fa; border-radius:4px; max-height:600px; overflow-y:auto;">{{ packet.model_dump_json(indent=2, exclude_none=True) }}</pre>
+    <h2>Attached Evidence ({{ p.has_evidence|length }}) <span class="text-muted" style="font-size:0.85rem; font-weight:400;">not interpreted, no strength</span></h2>
+    {% for item in p.has_evidence %}
+    {{ render_item(item) }}
+    {% endfor %}
+</div>
+{% endif %}
+
+<!-- Reference snapshot -->
+<div class="card">
+    <details>
+        <summary>Reference snapshot ({{ p.snapshot.resources|length }} resources, {{ p.snapshot.rules|length }} rules)</summary>
+        <div style="margin-top:0.75rem;">
+            <h2>Resources</h2>
+            <table>
+                <thead><tr><th>Resource</th><th>Label</th><th>Quality</th></tr></thead>
+                <tbody>
+                {% for r in p.snapshot.resources %}
+                <tr><td class="mono">{{ r.id }}</td><td>{{ r.label or '' }}</td><td>{% if r.quality is not none %}{{ r.quality }}{% else %}-{% endif %}</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+            {% if p.snapshot.releases %}
+            <h2 style="margin-top:1rem;">Releases</h2>
+            <ul style="margin-left:1.25rem; font-size:0.85rem;">
+                {% for r in p.snapshot.releases %}<li><span class="mono">{{ r.id }}</span> ({{ r.of_resource }} {{ r.version }})</li>{% endfor %}
+            </ul>
+            {% endif %}
+            <h2 style="margin-top:1rem;">Aggregation rules</h2>
+            {% for rule in p.snapshot.rules %}
+            <div class="field-grid" style="font-size:0.85rem;">
+                <span class="field-label">Rule</span>
+                <span class="mono">{{ rule.id }}</span>
+                <span class="field-label">Claim type</span>
+                <span>{{ rule.claim_type }}</span>
+                {% if rule.strength_bands %}
+                <span class="field-label">Bands</span>
+                <span>{{ rule.strength_bands|join('; ') }}</span>
+                {% endif %}
+                <span class="field-label">Parameters</span>
+                <span>scaling factor {{ rule.scaling_factor }}, confidence floor {{ rule.confidence_floor }}, default quality {{ rule.default_quality }}, {{ rule.stacked_lines }}</span>
+                {% if rule.exclusivity_rule %}
+                <span class="field-label">Exclusivity</span>
+                <span>{{ rule.exclusivity_rule }}</span>
+                {% endif %}
+            </div>
+            {% endfor %}
+            <h2 style="margin-top:1rem;">Agents and methods</h2>
+            <ul style="margin-left:1.25rem; font-size:0.85rem;">
+                {% for a in p.snapshot.agents %}<li><span class="mono">{{ a.id }}</span> {{ a.name or '' }}{% if a.model_name %} (model {{ a.model_name }}){% endif %}</li>{% endfor %}
+                {% for m in p.snapshot.methods %}<li><span class="mono">{{ m.id }}</span> {{ m.label or '' }}{% if m.version %} <span class="text-muted">(version {{ m.version }})</span>{% endif %}</li>{% endfor %}
+            </ul>
+        </div>
+    </details>
 </div>
 {% endblock %}
